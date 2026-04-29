@@ -1,0 +1,17 @@
+{
+  "env": {
+    "CLAUDE_CODE_USE_VERTEX": "1",
+    "ANTHROPIC_VERTEX_PROJECT_ID": "rice-tti-pocs",
+    "CLOUD_ML_REGION": "global",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-7"
+  },
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/dave_/workspace/**)",
+      "WebFetch(domain:registry.npmjs.org)",
+      "Read(//home/node/.npm/_logs/**)",
+      "WebSearch"
+    ]
+  },
+  "model": "opus"
+}
