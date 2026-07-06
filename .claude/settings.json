@@ -10,7 +10,10 @@
       "Read(//c/Users/dave_/workspace/**)",
       "WebFetch(domain:registry.npmjs.org)",
       "Read(//home/node/.npm/_logs/**)",
-      "WebSearch"
+      "WebSearch",
+      "WebFetch(domain:aws.amazon.com)",
+      "WebFetch(domain:support.google.com)",
+      "WebFetch(domain:knowledge.workspace.google.com)"
     ]
   },
   "model": "opus"
