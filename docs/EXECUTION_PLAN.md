@@ -2,7 +2,7 @@
 
 Living document tracking execution of [ARCHITECTURE_PLAN_B.md](./ARCHITECTURE_PLAN_B.md). Update task statuses as work progresses and commit each change.
 
-**Last updated:** 2026-07-08
+**Last updated:** 2026-07-08 · **Progress:** P1.1 ✅
 
 ---
 
@@ -15,11 +15,10 @@ Target production stack — all owned in this Next.js repo, no PHP, no Lightsail
 | 1 | **Storefront + `/admin`** (Next.js App Router, pinned to 15) | Public UI, checkout, webhooks, staff admin | AWS Amplify Hosting |
 | 2 | **Neon Postgres** | System of record: `items`, `reservations` | Neon serverless (free tier) |
 | 3 | **Upstash Redis** | Pending orders (1h TTL), fulfill locks, webhook dedup | Upstash (free tier) |
-| 4 | **Stripe** | Card via Stripe Checkout | Stripe-hosted |
-| 5 | **PayPal** | PayPal + Venmo Smart Buttons (nonprofit rate 1.99% + $0.49) | PayPal-hosted |
-| 6 | **Resend** | Customer + staff notification emails | Resend-hosted |
-| 7 | **DNS** | `rentals.bachmancc.org` → Amplify (GoDaddy CNAME) | GoDaddy |
-| 8 | **Observability** | Amplify logs + pino + Neon dashboard | AWS + Neon |
+| 4 | **PayPal** | PayPal + Venmo Smart Buttons (nonprofit rate 1.99% + $0.49) | PayPal-hosted |
+| 5 | **Resend** | Customer + staff notification emails | Resend-hosted |
+| 6 | **DNS** | `rentals.bachmancc.org` → Amplify (GoDaddy CNAME) | GoDaddy |
+| 7 | **Observability** | Amplify logs + pino + Neon dashboard | AWS + Neon |
 
 **Estimated monthly platform spend:** ~$0–3/mo.
 
@@ -43,7 +42,6 @@ flowchart TD
     end
 
     subgraph External["External services"]
-        Stripe[Stripe Checkout]
         PayPal[PayPal / Venmo]
         Resend[Resend email]
     end
@@ -52,15 +50,13 @@ flowchart TD
     DNS --> App
     App -.server-only.-> Redis
     App -.server-only.-> Neon
-    App -.server-only.-> Stripe
     App -.server-only.-> PayPal
     App -.server-only.-> Resend
-    Stripe -.signed webhook.-> App
     PayPal -.signed webhook.-> App
 
     classDef ext fill:#f5f5f5,stroke:#888,color:#222
     classDef store fill:#eef6ff,stroke:#3b7dd8,color:#0b3d91
-    class Stripe,PayPal,Resend ext
+    class PayPal,Resend ext
     class Redis,Neon store
 ```
 
@@ -97,7 +93,7 @@ Detailed schema, SQL queries, LibreBooking→Scheduler method map, and rationale
 
 Blocks production cutover. Est. ~3 days.
 
-- [ ] **P1.1** Provision Neon Postgres project with two branches: `main` (prod) and `dev` (shared dev/preview). Capture `DATABASE_URL` for each.
+- [x] **P1.1** ✅ Provision Neon Postgres project with two branches: `main` (prod) and `dev` (shared dev/preview). Capture `DATABASE_URL` for each. — Both branches live in `us-east-1` (prod endpoint `ep-rough-shadow`, dev endpoint `ep-cool-field`). Local `.env.local` holds `DATABASE_URL` (prod) + `DATABASE_URL_DEV` (dev); credentials never committed. Follow-up during P1.2/P1.3: standardize pooled (runtime) vs. direct/unpooled (DDL) endpoints across both.
 - [ ] **P1.2** Define schema in `lib/scheduler/db/schema.sql` (or Drizzle/Kysely). Tables: `items`, `reservations` + `reservations_item_time_idx`.
 - [ ] **P1.3** Build `lib/scheduler/client.ts` — 4 methods: `getAvailability`, `createReservation`, `cancelReservation`, `getReservation`. Use `@neondatabase/serverless` or `pg`.
 - [ ] **P1.4** Build `lib/scheduler/policy.ts` — validates buffer / min length / available hours / lead time / booking horizon.
@@ -124,7 +120,7 @@ Blocks production cutover. Est. ~3 days.
 - [ ] **N3.1** Create Amplify app from GitHub repo.
 - [ ] **N3.2** Port env vars into Amplify Production + Preview environments (add `DATABASE_URL`, drop LibreBooking vars).
 - [ ] **N3.3** Add `rentals.bachmancc.org` custom domain in Amplify; cut GoDaddy CNAME (lower TTL first).
-- [ ] **N3.4** Register production webhook URLs in Stripe + PayPal dashboards against the Amplify HTTPS URL.
+- [ ] **N3.4** Register production webhook URLs in the PayPal dashboard against the Amplify HTTPS URL.
 
 ### Block 4 — Product & policy decisions (BCC admin, parallelizable with dev)
 
@@ -138,10 +134,9 @@ Blocks production cutover. Est. ~3 days.
 ### Block 5 — Production smoke test
 
 - [ ] **N5.1** Availability respects existing reservations.
-- [ ] **N5.2** Stripe → webhook → reservation written → email arrives → success page renders.
-- [ ] **N5.3** PayPal equivalent (sandbox → live).
-- [ ] **N5.4** Two concurrent browsers on the same slot → second sees clean error + auto-refund.
-- [ ] **N5.5** Fungible item: book 50 chairs from stock of 100, verify 50 still available.
+- [ ] **N5.2** PayPal (sandbox → live) → webhook → reservation written → email arrives → success page renders.
+- [ ] **N5.3** Two concurrent browsers on the same slot → second sees clean error + auto-refund.
+- [ ] **N5.4** Fungible item: book 50 chairs from stock of 100, verify 50 still available.
 
 ### Block 6 — Staff admin UI (follow-up sprint, ~2–3 days)
 
@@ -155,13 +150,13 @@ Blocks production cutover. Est. ~3 days.
 
 - [ ] **N7.1** External uptime monitor (UptimeRobot free tier or equivalent).
 - [ ] **N7.2** Runbooks: "customer paid but no confirmation" + "Neon incident" (with optional `pg_dump` to S3 fallback on free tier).
-- [ ] **N7.3** Credential rotation cadence for Stripe / PayPal / Resend / Neon.
+- [ ] **N7.3** Credential rotation cadence for PayPal / Resend / Neon.
 
 ---
 
 ## Completed
 
-_None yet._
+- **P1.1** (2026-07-08) — Neon project provisioned with `main` (prod) + `dev` branches in `us-east-1`; connection strings captured in `.env.local` as `DATABASE_URL` / `DATABASE_URL_DEV`.
 
 ---
 
@@ -169,3 +164,5 @@ _None yet._
 
 - **2026-07-08** — Initial plan created from ARCHITECTURE_PLAN_B.md.
 - **2026-07-08** — Data & trust flow diagram converted from ASCII to Mermaid.
+- **2026-07-08** — Removed Stripe; PayPal (nonprofit rate) is the sole payment processor, matching BCC's existing setup.
+- **2026-07-08** — P1.1 complete: Neon `main`/`dev` branches provisioned in `us-east-1`.
