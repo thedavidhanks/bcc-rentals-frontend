@@ -25,18 +25,43 @@ Target production stack — all owned in this Next.js repo, no PHP, no Lightsail
 
 ### Data & trust flow
 
-```
-                    rentals.bachmancc.org
-                            |
-                            v
-             +---------------------------+
-             |   AWS Amplify Hosting     |
-             |   Next.js 15              |
-             |   Storefront + /admin     |
-             +---------------------------+
-                       /  |  \
-              Upstash    Neon    Stripe / PayPal / Resend
-              (ephemeral) (durable)
+```mermaid
+flowchart TD
+    User([Customer / Staff])
+    DNS[rentals.bachmancc.org<br/>GoDaddy CNAME]
+
+    subgraph Amplify["AWS Amplify Hosting"]
+        App[Next.js 15<br/>Storefront + /admin]
+    end
+
+    subgraph Ephemeral["Ephemeral state"]
+        Redis[(Upstash Redis<br/>pending orders · fulfill locks · webhook dedup)]
+    end
+
+    subgraph Durable["System of record"]
+        Neon[(Neon Postgres<br/>items · reservations · blocks)]
+    end
+
+    subgraph External["External services"]
+        Stripe[Stripe Checkout]
+        PayPal[PayPal / Venmo]
+        Resend[Resend email]
+    end
+
+    User -->|HTTPS| DNS
+    DNS --> App
+    App -.server-only.-> Redis
+    App -.server-only.-> Neon
+    App -.server-only.-> Stripe
+    App -.server-only.-> PayPal
+    App -.server-only.-> Resend
+    Stripe -.signed webhook.-> App
+    PayPal -.signed webhook.-> App
+
+    classDef ext fill:#f5f5f5,stroke:#888,color:#222
+    classDef store fill:#eef6ff,stroke:#3b7dd8,color:#0b3d91
+    class Stripe,PayPal,Resend ext
+    class Redis,Neon store
 ```
 
 - Confirm-then-book invariant preserved: reservations only inserted after payment succeeds.
@@ -143,3 +168,4 @@ _None yet._
 ## Change log
 
 - **2026-07-08** — Initial plan created from ARCHITECTURE_PLAN_B.md.
+- **2026-07-08** — Data & trust flow diagram converted from ASCII to Mermaid.
