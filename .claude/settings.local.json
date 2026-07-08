@@ -8,5 +8,6 @@
       "Edit",
       "Write"
     ]
-  }
+  },
+  "model": "claude-opus-4-8"
 }
