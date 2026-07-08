@@ -1,6 +1,6 @@
 # BCC Rentals — Architecture Plan B
 
-End goal: a production environment hosted entirely on **AWS Amplify**, with all reservation logic owned in this Next.js codebase, backed by **Neon Postgres** (free tier) for durable state and **Upstash Redis** for ephemeral state. No PHP, no Lightsail, no separate booking system. Hard ceiling: **$30/mo total subscription-style platform spend** (excluding per-transaction Stripe/PayPal fees).
+End goal: a production environment hosted entirely on **AWS Amplify**, with all reservation logic owned in this Next.js codebase, backed by **Neon Postgres** (free tier) for durable state and **Upstash Redis** for ephemeral state. No PHP, no Lightsail, no separate booking system. Hard ceiling: **$30/mo total subscription-style platform spend** (excluding per-transaction PayPal fees).
 
 This plan is an alternative to [ARCHITECTURE_PLAN.md](./ARCHITECTURE_PLAN.md). See [ARCHITECTURE_COMPARISON.md](./ARCHITECTURE_COMPARISON.md) for a side-by-side comparison.
 
@@ -20,13 +20,12 @@ This plan is an alternative to [ARCHITECTURE_PLAN.md](./ARCHITECTURE_PLAN.md). S
 | 1 | **Storefront + admin** (this repo) — Next.js App Router | Public UI, checkout, webhooks, staff admin pages | AWS Amplify Hosting | Dev team | $0 first 12 months (Amplify free tier on new AWS account), ~$1–3/mo after |
 | 2 | **Neon Postgres** | System of record for items, reservations, manual blocks | Neon serverless (free tier) | Dev team | $0 free tier (0.5 GiB storage, ~191 compute-hours/mo — far exceeds BCC volume) |
 | 3 | **Upstash Redis** | Pending orders (1h TTL), fulfill locks, webhook dedup keys | Upstash serverless (REST) | Dev team | $0 free tier |
-| 4 | **Stripe** | Card payments via Stripe Checkout; webhook → `/api/webhooks/stripe` | Stripe-hosted | Dev team | 2.9% + $0.30 per transaction |
-| 5 | **PayPal** | PayPal + Venmo via Smart Buttons (BCC 501(c)(3) nonprofit rate: 1.99% + $0.49); webhook → `/api/webhooks/paypal` | PayPal-hosted | Dev team | per-transaction fees only |
-| 6 | **Resend** | Customer confirmation emails + staff reservation notifications | Resend-hosted | Dev team | $0 free tier (3K emails/mo) |
-| 7 | **DNS / domain** | `rentals.bachmancc.org` → Amplify | GoDaddy (existing registrar for `bachmancc.org`) | BCC admin | Already paid |
-| 8 | **Observability** | Amplify built-in build/access logs; pino logs in [lib/logger.ts](../lib/logger.ts); Neon dashboard for DB metrics | AWS + Neon | Dev team | $0 |
+| 4 | **PayPal** | PayPal + Venmo via Smart Buttons (BCC 501(c)(3) nonprofit rate: 1.99% + $0.49); webhook → `/api/webhooks/paypal` | PayPal-hosted | Dev team | per-transaction fees only |
+| 5 | **Resend** | Customer confirmation emails + staff reservation notifications | Resend-hosted | Dev team | $0 free tier (3K emails/mo) |
+| 6 | **DNS / domain** | `rentals.bachmancc.org` → Amplify | GoDaddy (existing registrar for `bachmancc.org`) | BCC admin | Already paid |
+| 7 | **Observability** | Amplify built-in build/access logs; pino logs in [lib/logger.ts](../lib/logger.ts); Neon dashboard for DB metrics | AWS + Neon | Dev team | $0 |
 
-**Estimated steady-state monthly platform spend: ~$0–3/mo** (Amplify dominates after the 12-month free tier). Per-transaction Stripe/PayPal fees are on top and scale with rental revenue. Well under the $30/mo cap with significant headroom.
+**Estimated steady-state monthly platform spend: ~$0–3/mo** (Amplify dominates after the 12-month free tier). Per-transaction PayPal fees are on top and scale with rental revenue. Well under the $30/mo cap with significant headroom.
 
 ## Data model
 
@@ -129,7 +128,7 @@ The 4 LibreBooking-era methods map cleanly:
 | --- | --- |
 | `librebooking.authenticate()` | none — Neon uses standard `DATABASE_URL` connection pool |
 | `librebooking.getResourceAvailability(id, start, end)` | `scheduler.getAvailability(itemSlug, start, end, qty)` |
-| `librebooking.findOrCreateUser(...)` | none — customer email/name embedded on reservation; Stripe customer ID is canonical |
+| `librebooking.findOrCreateUser(...)` | none — customer email/name embedded on reservation; PayPal payer ID is canonical |
 | `librebooking.createReservation(...)` | `scheduler.createReservation({ itemSlug, qty, start, end, customer, orderId })` |
 | `LibreBookingConflictError` | `SchedulerConflictError` |
 
@@ -186,7 +185,7 @@ Same list as Plan A: `grep` for `revalidatePath`, `revalidateTag`, `unstable_aft
                        +---------------------------+
        server-only modules /        |        \ server-only modules
                           /         |         \
-                  Upstash Redis    Neon        Stripe / PayPal / Resend
+                  Upstash Redis    Neon        PayPal / Resend
                   (ephemeral:      Postgres    (HTTPS APIs)
                    pending orders, (durable:
                    locks, dedup)    items,
@@ -196,7 +195,7 @@ Same list as Plan A: `grep` for `revalidatePath`, `revalidateTag`, `unstable_aft
 
 - Every server module that touches secrets imports `"server-only"`.
 - Env vars are Zod-validated at boot in [lib/env.ts](../lib/env.ts).
-- Only `NEXT_PUBLIC_*` vars (site URL, Stripe publishable key, PayPal client ID) cross to the browser.
+- Only `NEXT_PUBLIC_*` vars (site URL, PayPal client ID) cross to the browser.
 - Webhooks verify signatures before any side effect.
 - Confirm-then-book invariant unchanged: reservation rows are only inserted after payment succeeds.
 - Conflict guard is the existing Redis fulfill lock + a re-check inside a Postgres transaction (Postgres alone can't enforce no-overlap as a constraint; the lock + read-then-write pattern is load-bearing, same as today).
@@ -204,10 +203,10 @@ Same list as Plan A: `grep` for `revalidatePath`, `revalidateTag`, `unstable_aft
 
 ## Production environments
 
-| Environment | Purpose | Postgres | Stripe / PayPal | Notes |
+| Environment | Purpose | Postgres | PayPal | Notes |
 | --- | --- | --- | --- | --- |
-| Local dev | Devcontainer | Neon branch (preview) or local Postgres | Stripe test keys + `stripe listen`; PayPal sandbox via reserved ngrok domain | See README "Local end-to-end testing" |
-| Amplify Preview | Per-PR previews | Neon branch (auto-created per PR) | Sandbox / test keys | Neon's branching maps cleanly to Amplify preview environments |
+| Local dev | Devcontainer | Neon branch (preview) or local Postgres | PayPal sandbox via reserved ngrok domain | See README "Local end-to-end testing" |
+| Amplify Preview | Per-PR previews | Neon branch (auto-created per PR) | Sandbox keys | Neon's branching maps cleanly to Amplify preview environments |
 | Amplify Production | `rentals.bachmancc.org` | Neon main branch | Live keys | Webhooks registered against the Amplify HTTPS URL |
 
 ## Next steps
@@ -239,7 +238,7 @@ Ordered by dependency. Blocks 1–3 must complete before production cutover.
 15. **Create the Amplify app** from the GitHub repo.
 16. **Port env vars** into Amplify Production and Preview environments (now includes `DATABASE_URL`; no LibreBooking vars).
 17. **Add the `rentals.bachmancc.org` custom domain** in Amplify; cut the GoDaddy CNAME (lower TTL first).
-18. **Register production webhook URLs** in Stripe + PayPal dashboards against the Amplify HTTPS URL.
+18. **Register production webhook URLs** in the PayPal dashboard against the Amplify HTTPS URL.
 
 ### Block 4 — Product & policy decisions
 
@@ -254,8 +253,7 @@ Ordered by dependency. Blocks 1–3 must complete before production cutover.
 
 25. Walk the README "Smoke checklist" against production:
     - Availability respects existing reservations
-    - Stripe → webhook → reservation written → email arrives → success page renders
-    - PayPal sandbox/live equivalent
+    - PayPal (sandbox → live) → webhook → reservation written → email arrives → success page renders
     - Two concurrent browsers on the same slot → second sees a clean error and an auto-refund
     - Fungible item: book 50 chairs from a stock of 100, verify 50 still available
 
@@ -271,14 +269,14 @@ Ordered by dependency. Blocks 1–3 must complete before production cutover.
 
 31. External uptime monitor (UptimeRobot free tier or equivalent).
 32. Runbooks: "customer paid but no confirmation" (check Upstash pending order, manual fulfill or refund); "Neon incident" (Neon's status page + automated backups; on free tier, periodic `pg_dump` to S3 as a fallback if needed).
-33. Credential rotation cadence for Stripe / PayPal / Resend / Neon.
+33. Credential rotation cadence for PayPal / Resend / Neon.
 
 ## Security posture summary
 
 - TLS everywhere — Amplify Hosting provides automatic HTTPS; Neon enforces TLS for Postgres connections.
 - No self-managed server — no SSH keys, no OS patching, no Docker, no MySQL admin.
 - Secrets only in Amplify env store and devcontainer-local `.env.local` (gitignored); Zod-validated at boot.
-- Webhook signature verification on Stripe and PayPal; event IDs deduped via Redis `SET NX` (24h TTL).
+- Webhook signature verification on PayPal; event IDs deduped via Redis `SET NX` (24h TTL).
 - Idempotent, lock-guarded fulfillment prevents double-booking even under concurrent webhook + capture callbacks.
 - Admin pages behind Basic Auth (V1) / Clerk (V2); no public surface.
 - Neon includes automated daily backups; PITR available on paid tier if/when reservation volume justifies it.
