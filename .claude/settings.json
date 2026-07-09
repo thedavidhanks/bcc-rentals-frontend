@@ -13,7 +13,9 @@
       "WebSearch",
       "WebFetch(domain:aws.amazon.com)",
       "WebFetch(domain:support.google.com)",
-      "WebFetch(domain:knowledge.workspace.google.com)"
+      "WebFetch(domain:knowledge.workspace.google.com)",
+      "Bash(echo:*)",
+      "Bash(read:*)"
     ]
   },
   "model": "opus"

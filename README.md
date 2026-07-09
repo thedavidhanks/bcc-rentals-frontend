@@ -92,6 +92,8 @@ Copy `.env.local.example` to `.env.local`. All vars are validated at boot via `l
 | `RESEND_API_KEY` | Resend API key. |
 | `EMAIL_FROM` | From address (must be a verified Resend domain). |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Upstash REST credentials. |
+| `DATABASE_URL` | Neon Postgres runtime (pooled) connection — scheduler system of record. |
+| `DATABASE_URL_DEV` | Neon dev-branch direct endpoint; used by `npm run db:apply` for DDL (tooling only). |
 
 ## Local end-to-end testing
 
