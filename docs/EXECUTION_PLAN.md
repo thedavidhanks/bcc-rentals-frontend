@@ -2,7 +2,7 @@
 
 Living document tracking execution of [ARCHITECTURE_PLAN_B.md](./ARCHITECTURE_PLAN_B.md). Update task statuses as work progresses and commit each change.
 
-**Last updated:** 2026-07-09 · **Progress:** P1.1 ✅ · P1.2 ✅
+**Last updated:** 2026-07-09 · **Progress:** P1.1 ✅ · P1.2 ✅ · P1.3 ✅ · P1.5 ✅
 
 ---
 
@@ -95,10 +95,10 @@ Blocks production cutover. Est. ~3 days.
 
 - [x] **P1.1** ✅ Provision Neon Postgres project with two branches: `main` (prod) and `dev` (shared dev/preview). Capture `DATABASE_URL` for each. — Both branches live in `us-east-1` (prod endpoint `ep-rough-shadow`, dev endpoint `ep-cool-field`). Local `.env.local` holds `DATABASE_URL` (prod) + `DATABASE_URL_DEV` (dev); credentials never committed. Follow-up during P1.2/P1.3: standardize pooled (runtime) vs. direct/unpooled (DDL) endpoints across both.
 - [x] **P1.2** ✅ Define schema in `lib/scheduler/db/schema.sql` (or Drizzle/Kysely). Tables: `items`, `reservations` + `reservations_item_time_idx`. — Raw SQL + `pg` (no ORM). `items` kept **minimal** (identity + inventory: `slug`, `name`, `type`, `total_stock`, `active`); pricing/policy stay in `lib/products/config.ts` to avoid a lossy dual source of truth. Applied to **both** Neon branches — `dev` via `npm run db:apply` (direct/unpooled `DATABASE_URL_DEV`) and `main` via `npm run db:apply:prod` (`DATABASE_URL`), since `main` is not yet exposed/in use and keeping the branches in sync avoids drift. `DATABASE_URL`/`DATABASE_URL_DEV` added to `lib/env.ts` + README. Pooled-vs-direct: dev DDL uses the direct endpoint; `main`'s DDL currently runs over the pooled endpoint (fine for `CREATE TABLE IF NOT EXISTS`) — standardizing a direct prod endpoint remains the P1.1 follow-up; runtime pooled wiring lands in P1.3.
-- [ ] **P1.3** Build `lib/scheduler/client.ts` — 4 methods: `getAvailability`, `createReservation`, `cancelReservation`, `getReservation`. Use `@neondatabase/serverless` or `pg`.
+- [x] **P1.3** ✅ Build `lib/scheduler/client.ts` — 4 methods: `getAvailability`, `createReservation`, `cancelReservation`, `getReservation`. Use `@neondatabase/serverless` or `pg`. — Uses `pg` (`Pool` + `withTransaction` in `lib/scheduler/db.ts`). `createReservation` re-checks capacity and inserts atomically under a per-item `pg_advisory_xact_lock` (works for both `unique` and `fungible` via `SUM(quantity)` vs `total_stock`); capacity exhaustion → `SchedulerConflictError` (`lib/scheduler/errors.ts`). `referenceNumber` = `reservations.id` (uuid). Verified end-to-end against Neon with a throwaway integration test (booking/overlap/adjacency/cancel-frees, fungible aggregation/exhaustion, unknown-item + bad-window validation) — deleted after run; real mocked units are P1.6.
 - [ ] **P1.4** Build `lib/scheduler/policy.ts` — validates buffer / min length / available hours / lead time / booking horizon.
-- [ ] **P1.5** Build `lib/scheduler/types.ts` — Zod schemas matching existing LibreBooking client surface so call sites change minimally.
-- [ ] **P1.6** Unit tests for `lib/scheduler/*` (mock Postgres client; mirror existing `lib/librebooking/*.test.ts` style).
+- [x] **P1.5** ✅ Build `lib/scheduler/types.ts` — Zod schemas matching existing LibreBooking client surface so call sites change minimally. — Done alongside P1.3: `lib/scheduler/types.ts` holds Zod input schemas (`getAvailabilityInputSchema`, `createReservationInputSchema`, with `endISO > startISO` refinement) + output types (`Reservation`, `Availability`). Surface is `itemSlug`-based with embedded customer (no `resourceId`/`userId`), per the Plan B method map — call sites still swap in Block 2 (N2.3/N2.4).
+- [ ] **P1.6** Unit tests for `lib/scheduler/*` (mock Postgres client; mirror existing `lib/librebooking/*.test.ts` style). — Test infra prepped: `vitest.config.ts` now aliases `server-only` → no-op so server modules import under vitest.
 - [ ] **P1.7** Seed initial items in production Neon: tent, popcorn machine, party room. (Chairs / tables / additional items per P4.)
 
 ---
@@ -158,6 +158,7 @@ Blocks production cutover. Est. ~3 days.
 
 - **P1.1** (2026-07-08) — Neon project provisioned with `main` (prod) + `dev` branches in `us-east-1`; connection strings captured in `.env.local` as `DATABASE_URL` / `DATABASE_URL_DEV`.
 - **P1.2** (2026-07-09) — Scheduler schema (`items` minimal + `reservations` + partial index) authored in `lib/scheduler/db/schema.sql` and applied to **both** Neon branches (`dev` via `npm run db:apply`, `main` via `npm run db:apply:prod`; both idempotent, both empty and verified). Overlap query + integrity CHECKs verified in a rolled-back transaction; `DATABASE_URL`/`DATABASE_URL_DEV` registered in `lib/env.ts` + README.
+- **P1.3 + P1.5** (2026-07-09) — Scheduler client (`lib/scheduler/{client,db,types,errors}.ts`) built on `pg` with an advisory-lock transaction for race-safe booking; 4 methods verified end-to-end against Neon. `pg`/`@types/pg` added; `vitest.config.ts` aliases `server-only` for tests.
 
 ---
 
@@ -168,3 +169,4 @@ Blocks production cutover. Est. ~3 days.
 - **2026-07-08** — Removed Stripe; PayPal (nonprofit rate) is the sole payment processor, matching BCC's existing setup.
 - **2026-07-08** — P1.1 complete: Neon `main`/`dev` branches provisioned in `us-east-1`.
 - **2026-07-09** — P1.2 complete: scheduler schema defined (raw SQL + `pg`, minimal `items`) and applied to both Neon branches (`dev` + `main`).
+- **2026-07-09** — P1.3 + P1.5 complete: `lib/scheduler/` client (`getAvailability`/`createReservation`/`cancelReservation`/`getReservation`) on `pg` with advisory-lock booking, plus Zod types; verified against Neon.
