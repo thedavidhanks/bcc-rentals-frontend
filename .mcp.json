@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "duckduckgo": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@oevortex/ddg_search"],
+      "env": {}
+    }
+  }
+}

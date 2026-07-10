@@ -1,4 +1,5 @@
 {
+  "gcpAuthRefresh": "gcloud auth application-default login",
   "env": {
     "CLAUDE_CODE_USE_VERTEX": "1",
     "ANTHROPIC_VERTEX_PROJECT_ID": "rice-tti-pocs",
@@ -10,13 +11,17 @@
       "Read(//c/Users/dave_/workspace/**)",
       "WebFetch(domain:registry.npmjs.org)",
       "Read(//home/node/.npm/_logs/**)",
-      "WebSearch",
       "WebFetch(domain:aws.amazon.com)",
       "WebFetch(domain:support.google.com)",
       "WebFetch(domain:knowledge.workspace.google.com)",
+      "WebFetch(domain:docs.anthropic.com)",
       "Bash(echo:*)",
-      "Bash(read:*)"
-    ]
+      "Bash(read:*)",
+      "Bash(cd:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)"
+    ],
+    "deny": ["WebSearch"]
   },
   "model": "opus"
 }

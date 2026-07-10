@@ -3,7 +3,8 @@
   "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
+    "ghcr.io/dhoeric/features/google-cloud-cli:1": {},
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
   },
   "forwardPorts": [3000],
   "portsAttributes": {
@@ -12,15 +13,12 @@
       "onAutoForward": "notify"
     }
   },
-  "postCreateCommand": "npm install -g npm@latest @anthropic-ai/claude-code && npm install",
   "customizations": {
     "vscode": {
       "extensions": [
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode",
-        "bradlc.vscode-tailwindcss",
-        "stripe.vscode-stripe",
-        "anthropic.claude-code"
+        "bradlc.vscode-tailwindcss"
       ],
       "settings": {
         "editor.formatOnSave": true,
@@ -34,5 +32,10 @@
       }
     }
   },
-  "remoteUser": "node"
+  "remoteUser": "node",
+  "mounts": [
+    "source=claude-code-config-${devcontainerId},target=/home/node/.claude,type=volume",
+    "source=gcloud-config-${devcontainerId},target=/home/node/.config/gcloud,type=volume"
+  ],
+  "postCreateCommand": "sudo chown -R node:node /home/node/.claude /home/node/.config/gcloud"
 }
