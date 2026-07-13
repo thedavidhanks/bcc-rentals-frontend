@@ -11,7 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:apply": "node --env-file=.env.local scripts/db/apply-schema.mjs",
-    "db:apply:prod": "node --env-file=.env.local scripts/db/apply-schema.mjs --prod"
+    "db:apply:prod": "node --env-file=.env.local scripts/db/apply-schema.mjs --prod",
+    "db:seed": "node --env-file=.env.local scripts/db/seed-products.mjs",
+    "db:seed:prod": "node --env-file=.env.local scripts/db/seed-products.mjs --prod"
   },
   "dependencies": {
     "@paypal/react-paypal-js": "^9.1.1",

@@ -2,7 +2,7 @@ import "server-only";
 import { logger } from "@/lib/logger";
 import { librebooking } from "@/lib/librebooking/client";
 import { LibreBookingConflictError } from "@/lib/librebooking/errors";
-import { getProduct } from "@/lib/products/config";
+import { getProduct } from "@/lib/products/repository";
 import { sendBookingConfirmation } from "@/lib/email/resend";
 import { refundPayment } from "@/lib/payments/refund";
 import { acquireFulfillLock, getOrder, updateOrder, type Order } from "./store";
@@ -50,7 +50,7 @@ export async function fulfillOrder(input: FulfillInput): Promise<FulfillResult> 
   if (!fresh) return { status: "not-found" };
   if (fresh.status === "confirmed") return { status: "already-confirmed", order: fresh };
 
-  const product = getProduct(fresh.productSlug);
+  const product = await getProduct(fresh.productSlug);
   if (!product) {
     log.error({ slug: fresh.productSlug }, "fulfill: product config missing");
     await updateOrder(input.orderId, {
@@ -59,6 +59,16 @@ export async function fulfillOrder(input: FulfillInput): Promise<FulfillResult> 
       paymentRef: input.paymentRef,
     });
     throw new Error(`Product config missing for slug ${fresh.productSlug}`);
+  }
+  if (product.resourceId == null) {
+    // Transitional: LibreBooking fulfillment needs a resource id (dropped in N2.7).
+    log.error({ slug: fresh.productSlug }, "fulfill: product has no resource_id");
+    await updateOrder(input.orderId, {
+      status: "failed",
+      paymentProvider: input.paymentProvider,
+      paymentRef: input.paymentRef,
+    });
+    throw new Error(`Product ${fresh.productSlug} has no resource_id`);
   }
 
   try {

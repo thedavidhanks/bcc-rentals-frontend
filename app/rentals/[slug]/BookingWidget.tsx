@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { quote, formatCents, PricingError } from "@/lib/products/pricing";
-import type { Product } from "@/lib/products/config";
+import type { Product } from "@/lib/products/types";
 
 type Customer = { firstName: string; lastName: string; email: string; phone: string };
 
@@ -25,6 +25,8 @@ export function BookingWidget({ product }: { product: Product }) {
   const today = startOfDay(new Date());
   const minDate = addHours(today, product.bookingWindow.minLeadHours);
   const maxDate = addDays(today, product.bookingWindow.maxAdvanceDays);
+  // Local const so discriminated-union narrowing on `kind` survives into closures.
+  const pricing = product.pricing;
 
   const [date, setDate] = useState<Date | undefined>();
   const [endDate, setEndDate] = useState<Date | undefined>();
@@ -108,26 +110,24 @@ export function BookingWidget({ product }: { product: Product }) {
           <Label className="mb-2 block">
             {product.unit === "full-day" ? "Pick a date (or range)" : "Pick a date"}
           </Label>
-          <DayPicker
-            mode={product.unit === "full-day" ? "range" : "single"}
-            disabled={{ before: minDate, after: maxDate }}
-            selected={
-              product.unit === "full-day"
-                ? date
-                  ? { from: date, to: endDate ?? date }
-                  : undefined
-                : date
-            }
-            onSelect={(value) => {
-              if (product.unit === "full-day") {
-                const r = value as { from?: Date; to?: Date } | undefined;
+          {product.unit === "full-day" ? (
+            <DayPicker
+              mode="range"
+              disabled={{ before: minDate, after: maxDate }}
+              selected={date ? { from: date, to: endDate ?? date } : undefined}
+              onSelect={(r) => {
                 setDate(r?.from);
                 setEndDate(r?.to);
-              } else {
-                setDate(value as Date | undefined);
-              }
-            }}
-          />
+              }}
+            />
+          ) : (
+            <DayPicker
+              mode="single"
+              disabled={{ before: minDate, after: maxDate }}
+              selected={date}
+              onSelect={(d) => setDate(d)}
+            />
+          )}
         </div>
 
         {product.unit === "hourly" && product.hourlyConstraints && (
@@ -160,10 +160,10 @@ export function BookingWidget({ product }: { product: Product }) {
                 value={duration}
                 onChange={(e) => setDuration(Number(e.target.value))}
               >
-                {product.pricing.kind === "flat-per-hour" &&
+                {pricing.kind === "flat-per-hour" &&
                   Array.from(
-                    { length: product.pricing.maxHours - product.pricing.minHours + 1 },
-                    (_, i) => product.pricing.minHours + i,
+                    { length: pricing.maxHours - pricing.minHours + 1 },
+                    (_, i) => pricing.minHours + i,
                   ).map((h) => (
                     <option key={h} value={h}>
                       {h}

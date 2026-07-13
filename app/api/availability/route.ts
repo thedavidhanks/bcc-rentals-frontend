@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { librebooking } from "@/lib/librebooking/client";
-import { getProduct } from "@/lib/products/config";
+import { getProduct } from "@/lib/products/repository";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -28,8 +28,11 @@ export async function GET(request: Request) {
     );
   }
 
-  const product = getProduct(parsed.data.slug);
+  const product = await getProduct(parsed.data.slug);
   if (!product) return NextResponse.json({ error: "Unknown product" }, { status: 404 });
+  if (product.resourceId == null) {
+    return NextResponse.json({ error: "Availability lookup failed" }, { status: 502 });
+  }
 
   try {
     const availability = await librebooking.getResourceAvailability({

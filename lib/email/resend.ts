@@ -4,7 +4,7 @@ import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { formatCents } from "@/lib/products/pricing";
 import type { Order } from "@/lib/orders/store";
-import type { Product } from "@/lib/products/config";
+import type { Product } from "@/lib/products/types";
 import { renderConfirmationHtml } from "./templates/confirmation";
 
 const resend = new Resend(env.RESEND_API_KEY);

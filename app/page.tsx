@@ -1,9 +1,12 @@
 import Link from "next/link";
-import { ALL_PRODUCTS } from "@/lib/products/config";
+import { listProducts } from "@/lib/products/repository";
 import { formatCents } from "@/lib/products/pricing";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const products = await listProducts();
   return (
     <div className="space-y-8">
       <section className="space-y-2">
@@ -14,7 +17,7 @@ export default function Home() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
-        {ALL_PRODUCTS.map((product) => (
+        {products.map((product) => (
           <Link key={product.slug} href={`/rentals/${product.slug}`}>
             <Card className="h-full transition-shadow hover:shadow-md">
               <CardHeader>

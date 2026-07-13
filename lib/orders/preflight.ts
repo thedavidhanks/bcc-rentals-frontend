@@ -1,7 +1,7 @@
 import "server-only";
 import { v4 as uuid } from "uuid";
 import { librebooking } from "@/lib/librebooking/client";
-import { getProduct } from "@/lib/products/config";
+import { getProduct } from "@/lib/products/repository";
 import { quote } from "@/lib/products/pricing";
 import { createPendingOrder, type Customer } from "./store";
 
@@ -30,8 +30,9 @@ export class PreflightError extends Error {
  * endpoint.
  */
 export async function preflightCheckout(input: CheckoutInput): Promise<Preflight> {
-  const product = getProduct(input.slug);
+  const product = await getProduct(input.slug);
   if (!product) throw new PreflightError("Unknown product", 404);
+  if (product.resourceId == null) throw new PreflightError("Product unavailable", 409);
 
   const q = quote(product, input.startISO, input.endISO);
 

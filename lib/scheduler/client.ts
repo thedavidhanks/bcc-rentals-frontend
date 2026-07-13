@@ -33,6 +33,11 @@ type ReservationRow = {
 
 const toISO = (v: Date | string): string => (v instanceof Date ? v.toISOString() : new Date(v).toISOString());
 
+// Shifts an ISO timestamp by `minutes` (may be negative). Used to widen the
+// overlap window by an item's buffer so bookings can't butt up against each other.
+const shiftISO = (iso: string, minutes: number): string =>
+  new Date(new Date(iso).getTime() + minutes * 60_000).toISOString();
+
 function mapReservation(row: ReservationRow, itemSlug: string): Reservation {
   return {
     id: row.id,
@@ -63,7 +68,7 @@ export const scheduler = {
    * wide calendar query, use `reservations`.
    */
   async getAvailability(input: GetAvailabilityInput): Promise<Availability> {
-    const { itemSlug, startISO, endISO, quantity } = getAvailabilityInputSchema.parse(input);
+    const { itemSlug, startISO, endISO, quantity, bufferMinutes } = getAvailabilityInputSchema.parse(input);
     const pool = getPool();
 
     const itemRes = await pool.query<{ id: string; total_stock: number }>(
@@ -75,7 +80,7 @@ export const scheduler = {
 
     const resvRes = await pool.query<ReservationRow>(
       `SELECT * FROM reservations WHERE item_id = $1 AND ${OVERLAP} ORDER BY start_at`,
-      [item.id, startISO, endISO],
+      [item.id, shiftISO(startISO, -bufferMinutes), shiftISO(endISO, bufferMinutes)],
     );
     const reservations = resvRes.rows.map((r) => mapReservation(r, itemSlug));
     const reserved = reservations.reduce((sum, r) => sum + r.quantity, 0);
@@ -115,7 +120,7 @@ export const scheduler = {
 
       const capRes = await client.query<{ reserved: number }>(
         `SELECT COALESCE(SUM(quantity), 0)::int AS reserved FROM reservations WHERE item_id = $1 AND ${OVERLAP}`,
-        [item.id, data.startISO, data.endISO],
+        [item.id, shiftISO(data.startISO, -data.bufferMinutes), shiftISO(data.endISO, data.bufferMinutes)],
       );
       const reserved = capRes.rows[0].reserved;
       if (reserved + data.quantity > item.total_stock) {

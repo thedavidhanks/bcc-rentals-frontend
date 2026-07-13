@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
-import { getProduct } from "@/lib/products/config";
+import { getProduct } from "@/lib/products/repository";
 import { formatCents } from "@/lib/products/pricing";
 import { BookingWidget } from "./BookingWidget";
+
+export const dynamic = "force-dynamic";
 
 export default async function ProductPage({
   params,
@@ -9,7 +11,7 @@ export default async function ProductPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const product = getProduct(slug);
+  const product = await getProduct(slug);
   if (!product) notFound();
 
   return (

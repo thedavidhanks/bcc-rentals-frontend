@@ -41,7 +41,7 @@ try {
 
   const { rows: tables } = await client.query(
     `SELECT table_name FROM information_schema.tables
-     WHERE table_schema = 'public' AND table_name IN ('items', 'reservations')
+     WHERE table_schema = 'public' AND table_name IN ('items', 'item_prices', 'reservations')
      ORDER BY table_name;`
   );
   const { rows: indexes } = await client.query(

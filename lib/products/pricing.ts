@@ -1,5 +1,5 @@
 import { differenceInCalendarDays, differenceInMinutes, parseISO } from "date-fns";
-import type { Product } from "./config";
+import type { PriceRule, Product } from "./types";
 
 export type Quote = {
   units: number;
@@ -9,6 +9,53 @@ export type Quote = {
 };
 
 export class PricingError extends Error {}
+
+// BCC operates in Eastern time; pricing rules are scoped in local day/time.
+const BCC_TIMEZONE = "America/New_York";
+
+/** Day-of-week (0=Sun..6=Sat) and minutes-since-midnight of `date` in BCC time. */
+function localDayAndMinute(date: Date): { dow: number; minute: number } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: BCC_TIMEZONE,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const dowMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const dow = dowMap[get("weekday")] ?? 0;
+  const minute = Number(get("hour")) * 60 + Number(get("minute"));
+  return { dow, minute };
+}
+
+function ruleMatches(rule: PriceRule, dow: number, minute: number): boolean {
+  if (rule.daysOfWeek !== null && !rule.daysOfWeek.includes(dow)) return false;
+  if (rule.startMinute !== null && rule.endMinute !== null) {
+    if (minute < rule.startMinute || minute >= rule.endMinute) return false;
+  }
+  return true;
+}
+
+/** Specificity: day+time scoped (2) beats one axis (1) beats all-days/all-hours (0). */
+function specificity(rule: PriceRule): number {
+  return (rule.daysOfWeek !== null ? 1 : 0) + (rule.startMinute !== null ? 1 : 0);
+}
+
+/**
+ * Rate (cents) applicable at the booking start. Picks the highest-priority
+ * matching rule, tie-broken by specificity; falls back to the flat base rate.
+ * Per-unit variation across a multi-day/multi-band booking is deferred (N4.1) —
+ * today the whole booking is charged at the start's rate.
+ */
+export function resolveRate(product: Product, startISO: string): number {
+  const start = parseISO(startISO);
+  const { dow, minute } = localDayAndMinute(start);
+  const matches = product.prices
+    .filter((r) => ruleMatches(r, dow, minute))
+    .sort((a, b) => b.priority - a.priority || specificity(b) - specificity(a));
+  return matches[0]?.priceCents ?? product.pricing.cents;
+}
 
 export function quote(product: Product, startISO: string, endISO: string): Quote {
   const start = parseISO(startISO);
@@ -21,6 +68,8 @@ export function quote(product: Product, startISO: string, endISO: string): Quote
     throw new PricingError("End must be after start");
   }
 
+  const unitCents = resolveRate(product, startISO);
+
   if (product.pricing.kind === "flat-per-day") {
     const days = Math.max(1, differenceInCalendarDays(end, start) + 1);
     if (days < product.pricing.minDays) {
@@ -29,8 +78,8 @@ export function quote(product: Product, startISO: string, endISO: string): Quote
     return {
       units: days,
       unitLabel: days === 1 ? "day" : "days",
-      unitCents: product.pricing.cents,
-      totalCents: days * product.pricing.cents,
+      unitCents,
+      totalCents: days * unitCents,
     };
   }
 
@@ -45,8 +94,8 @@ export function quote(product: Product, startISO: string, endISO: string): Quote
   return {
     units: hours,
     unitLabel: hours === 1 ? "hour" : "hours",
-    unitCents: product.pricing.cents,
-    totalCents: hours * product.pricing.cents,
+    unitCents,
+    totalCents: hours * unitCents,
   };
 }
 

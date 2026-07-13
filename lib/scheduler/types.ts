@@ -25,6 +25,7 @@ export const getAvailabilityInputSchema = z
     startISO: isoOffset,
     endISO: isoOffset,
     quantity: z.number().int().positive().default(1),
+    bufferMinutes: z.number().int().nonnegative().default(0),
   })
   .refine(endAfterStart, endAfterStartMsg);
 export type GetAvailabilityInput = z.input<typeof getAvailabilityInputSchema>;
@@ -35,6 +36,7 @@ export const createReservationInputSchema = z
     startISO: isoOffset,
     endISO: isoOffset,
     quantity: z.number().int().positive().default(1),
+    bufferMinutes: z.number().int().nonnegative().default(0),
     status: reservationStatusSchema.default("confirmed"),
     orderId: z.string().min(1).optional(),
     customer: reservationCustomerSchema.optional(),

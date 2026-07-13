@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { getOrder } from "@/lib/orders/store";
-import { getProduct } from "@/lib/products/config";
+import { getProduct } from "@/lib/products/repository";
 import { formatCents } from "@/lib/products/pricing";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,7 @@ export default async function ConfirmationPage({
     );
   }
 
-  const product = getProduct(order.productSlug);
+  const product = await getProduct(order.productSlug);
   const productName = product?.name ?? order.productSlug;
 
   if (order.status === "pending") {
