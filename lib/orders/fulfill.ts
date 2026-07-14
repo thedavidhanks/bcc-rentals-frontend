@@ -1,9 +1,9 @@
 import "server-only";
 import { logger } from "@/lib/logger";
-import { librebooking } from "@/lib/librebooking/client";
-import { LibreBookingConflictError } from "@/lib/librebooking/errors";
+import { scheduler } from "@/lib/scheduler/client";
+import { SchedulerConflictError } from "@/lib/scheduler/errors";
 import { getProduct } from "@/lib/products/repository";
-import { sendBookingConfirmation } from "@/lib/email/resend";
+import { sendBookingConfirmation, sendStaffNotification } from "@/lib/email/resend";
 import { refundPayment } from "@/lib/payments/refund";
 import { acquireFulfillLock, getOrder, updateOrder, type Order } from "./store";
 
@@ -60,33 +60,22 @@ export async function fulfillOrder(input: FulfillInput): Promise<FulfillResult> 
     });
     throw new Error(`Product config missing for slug ${fresh.productSlug}`);
   }
-  if (product.resourceId == null) {
-    // Transitional: LibreBooking fulfillment needs a resource id (dropped in N2.7).
-    log.error({ slug: fresh.productSlug }, "fulfill: product has no resource_id");
-    await updateOrder(input.orderId, {
-      status: "failed",
-      paymentProvider: input.paymentProvider,
-      paymentRef: input.paymentRef,
-    });
-    throw new Error(`Product ${fresh.productSlug} has no resource_id`);
-  }
-
   try {
-    const { userId } = await librebooking.findOrCreateUser({
-      email: fresh.customer.email,
-      firstName: fresh.customer.firstName,
-      lastName: fresh.customer.lastName,
-      phone: fresh.customer.phone,
+    const reservation = await scheduler.createReservation({
+      itemSlug: fresh.productSlug,
+      startISO: fresh.startISO,
+      endISO: fresh.endISO,
+      quantity: 1,
+      bufferMinutes: product.bufferMinutes,
+      orderId: fresh.id,
+      customer: {
+        email: fresh.customer.email,
+        name: `${fresh.customer.firstName} ${fresh.customer.lastName}`,
+        phone: fresh.customer.phone,
+      },
+      notes: `Booked via BCC Rentals. Order ${fresh.id}. Payment ${input.paymentProvider}:${input.paymentRef}.`,
     });
-
-    const { referenceNumber } = await librebooking.createReservation({
-      startDateTime: fresh.startISO,
-      endDateTime: fresh.endISO,
-      resourceId: product.resourceId,
-      userId,
-      title: `${product.name} — ${fresh.customer.firstName} ${fresh.customer.lastName}`,
-      description: `Booked via BCC Rentals. Order ${fresh.id}. Payment ${input.paymentProvider}:${input.paymentRef}.`,
-    });
+    const referenceNumber = reservation.id;
 
     const confirmed = await updateOrder(input.orderId, {
       status: "confirmed",
@@ -100,10 +89,13 @@ export async function fulfillOrder(input: FulfillInput): Promise<FulfillResult> 
     await sendBookingConfirmation({ order: confirmed, product, referenceNumber }).catch((err) => {
       log.error({ err }, "fulfill: confirmation email failed");
     });
+    await sendStaffNotification({ order: confirmed, product, referenceNumber }).catch((err) => {
+      log.error({ err }, "fulfill: staff notification email failed");
+    });
 
     return { status: "confirmed", order: confirmed };
   } catch (err) {
-    if (err instanceof LibreBookingConflictError) {
+    if (err instanceof SchedulerConflictError) {
       log.warn({ err }, "fulfill: slot conflict — issuing refund");
       await refundPayment({
         provider: input.paymentProvider,

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { librebooking } from "@/lib/librebooking/client";
+import { scheduler } from "@/lib/scheduler/client";
 import { getProduct } from "@/lib/products/repository";
 import { logger } from "@/lib/logger";
 
@@ -30,19 +30,24 @@ export async function GET(request: Request) {
 
   const product = await getProduct(parsed.data.slug);
   if (!product) return NextResponse.json({ error: "Unknown product" }, { status: 404 });
-  if (product.resourceId == null) {
-    return NextResponse.json({ error: "Availability lookup failed" }, { status: 502 });
-  }
 
   try {
-    const availability = await librebooking.getResourceAvailability({
-      resourceId: product.resourceId,
-      startDateTime: parsed.data.from,
-      endDateTime: parsed.data.to,
+    const availability = await scheduler.getAvailability({
+      itemSlug: product.slug,
+      startISO: parsed.data.from,
+      endISO: parsed.data.to,
     });
+    // Public, unauthenticated endpoint — return only the occupied windows, never
+    // customer PII (email/name/phone) carried on the reservation rows.
     return NextResponse.json({
       product: { slug: product.slug, unit: product.unit },
-      reservations: availability.reservations,
+      totalStock: availability.totalStock,
+      reservations: availability.reservations.map((r) => ({
+        startISO: r.startISO,
+        endISO: r.endISO,
+        quantity: r.quantity,
+        status: r.status,
+      })),
     });
   } catch (err) {
     logger.error({ err, slug: parsed.data.slug }, "availability lookup failed");

@@ -4,8 +4,6 @@
 import type { Product } from "@/lib/products/types";
 
 // BCC operates in Eastern time; available-hours are local wall-clock hours.
-// (The legacy LibreBooking client hardcodes America/Chicago — inconsistent, but
-// that module is removed in N2.7.)
 const BCC_TIMEZONE = "America/New_York";
 
 export type PolicyCode = "lead-time" | "horizon" | "available-hours" | "slot-alignment";

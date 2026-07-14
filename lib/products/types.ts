@@ -51,6 +51,4 @@ export type Product = {
   bookingWindow: { minLeadHours: number; maxAdvanceDays: number };
   hourlyConstraints?: { openHour: number; closeHour: number; slotMinutes: number };
   bufferMinutes: number;
-  /** Transitional LibreBooking resource id; removed in N2.7. */
-  resourceId?: number;
 };

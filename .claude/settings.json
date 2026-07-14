@@ -22,9 +22,12 @@
       "Bash(cat:*)",
       "Bash(grep:*)",
       "Bash(npm run typecheck:*)",
-      "Bash(npm run test:*)"
+      "Bash(npm run test:*)",
+      "mcp__duckduckgo__web-search"
     ],
-    "deny": ["WebSearch"]
+    "deny": [
+      "WebSearch"
+    ]
   },
   "model": "opus"
 }

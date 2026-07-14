@@ -24,7 +24,6 @@ type ItemRow = {
   lead_hours: number;
   horizon_days: number;
   available_hours: unknown;
-  resource_id: number | null;
 };
 
 type PriceRow = {
@@ -54,7 +53,6 @@ function makeItem(overrides: Partial<ItemRow> = {}): ItemRow {
     lead_hours: 24,
     horizon_days: 180,
     available_hours: null,
-    resource_id: null,
     ...overrides,
   };
 }

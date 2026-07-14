@@ -2,7 +2,7 @@
 
 Living document tracking execution of [ARCHITECTURE_PLAN_B.md](./ARCHITECTURE_PLAN_B.md). Update task statuses as work progresses and commit each change.
 
-**Last updated:** 2026-07-13 · **Progress:** P1.1 ✅ · P1.2 ✅ · P1.3 ✅ · P1.4 ✅ · P1.5 ✅ · P1.6 ✅ · P1.7 ✅ — **Block 1 complete**
+**Last updated:** 2026-07-13 · **Progress:** Block 1 ✅ (P1.1–P1.7) · Block 2 ✅ (N2.3–N2.7; N2.1/N2.2 dropped — see hosting note) — **scheduler is now the live booking backend; LibreBooking removed**
 
 ---
 
@@ -10,9 +10,11 @@ Living document tracking execution of [ARCHITECTURE_PLAN_B.md](./ARCHITECTURE_PL
 
 Target production stack — all owned in this Next.js repo, no PHP, no Lightsail, no separate booking system. Hard ceiling: **$30/mo** platform spend (excl. per-transaction fees).
 
+> **Hosting decision (2026-07-13):** target is **GCP Cloud Run** (containerized, `output: 'standalone'`), not AWS Amplify. Amplify's managed SSR adapter caps at Next.js 15; Cloud Run runs any Next version from a container at ~$0/mo (scale-to-zero). This lets us **stay on Next.js 16** and drops the old N2.1 (Next 16→15 downgrade) and N2.2 (Amplify feature audit) entirely. Neon/Upstash remain in AWS `us-east-1` — deploy Cloud Run to a nearby region.
+
 | # | Component | Role | Hosting |
 | - | --- | --- | --- |
-| 1 | **Storefront + `/admin`** (Next.js App Router, pinned to 15) | Public UI, checkout, webhooks, staff admin | AWS Amplify Hosting |
+| 1 | **Storefront + `/admin`** (Next.js 16 App Router, `output: 'standalone'`) | Public UI, checkout, webhooks, staff admin | GCP Cloud Run |
 | 2 | **Neon Postgres** | System of record: `items`, `reservations` | Neon serverless (free tier) |
 | 3 | **Upstash Redis** | Pending orders (1h TTL), fulfill locks, webhook dedup | Upstash (free tier) |
 | 4 | **PayPal** | PayPal + Venmo Smart Buttons (nonprofit rate 1.99% + $0.49) | PayPal-hosted |
@@ -29,8 +31,8 @@ flowchart TD
     User([Customer / Staff])
     DNS[rentals.bachmancc.org<br/>GoDaddy CNAME]
 
-    subgraph Amplify["AWS Amplify Hosting"]
-        App[Next.js 15<br/>Storefront + /admin]
+    subgraph CloudRun["GCP Cloud Run"]
+        App[Next.js 16<br/>Storefront + /admin]
     end
 
     subgraph Ephemeral["Ephemeral state"]
@@ -105,22 +107,23 @@ Blocks production cutover. Est. ~3 days.
 
 ## Next
 
-### Block 2 — Swap call sites + ship ICS feed (~1 day)
+### Block 2 — Swap call sites + ship ICS feed ✅ (2026-07-13)
 
-- [ ] **N2.1** Downgrade Next.js 16 → 15 (Amplify Hosting supports Next 12–15 only).
-- [ ] **N2.2** Audit codebase for Amplify-unsupported features: `revalidatePath`, `revalidateTag`, `unstable_after`, `runtime = "edge"`, streaming responses, middleware on optimized images.
-- [ ] **N2.3** Swap imports in `app/api/availability/route.ts`, `lib/orders/preflight.ts`, `lib/orders/fulfill.ts` from `lib/librebooking` → `lib/scheduler`.
-- [ ] **N2.4** Drop `findOrCreateUser` in `fulfill.ts`; pass customer email/name directly into `createReservation`.
-- [ ] **N2.5** Add ICS feed route at `app/api/calendar/[itemSlug]/route.ts` using the `ics` npm package.
-- [ ] **N2.6** Add staff notification email to `reservations@bachmancc.org` in `fulfill.ts` (Resend) if not already present.
-- [ ] **N2.7** Delete `lib/librebooking/` and all `LIBREBOOKING_*` / `LB_RESOURCE_ID_*` env vars; remove from `lib/env.ts`, `.env.local.example`, README env table.
+- [x] ~~**N2.1** Downgrade Next.js 16 → 15~~ **Dropped** — target moved from Amplify to Cloud Run (see hosting note); Next 16 is kept.
+- [x] ~~**N2.2** Audit for Amplify-unsupported features~~ **Dropped** — not applicable to Cloud Run (runs the standard Node server).
+- [x] **N2.3** ✅ Swapped `app/api/availability/route.ts`, `lib/orders/preflight.ts`, `lib/orders/fulfill.ts` from `lib/librebooking` → `lib/scheduler`. Preflight now checks `scheduler.getAvailability().isAvailable` and enforces `validateBooking` (policy → `PreflightError` 400). Availability route strips customer PII (public endpoint).
+- [x] **N2.4** ✅ Dropped `findOrCreateUser`; `fulfill.ts` passes the customer (email/name/phone) directly into `scheduler.createReservation` (quantity 1, `bufferMinutes` from the product); `referenceNumber` = reservation id; catches `SchedulerConflictError` for the refund branch.
+- [x] **N2.5** ✅ ICS feed at `app/api/calendar/[itemSlug]/route.ts` via the `ics` package — PII-free events over the item's booking horizon.
+- [x] **N2.6** ✅ Staff notification email (`sendStaffNotification` in `lib/email/resend.ts`) sent on fulfill to the new `STAFF_NOTIFICATION_EMAIL` env var.
+- [x] **N2.7** ✅ Deleted `lib/librebooking/`; removed `LIBREBOOKING_*` / `LB_RESOURCE_ID_*` from `lib/env.ts`, `.env.local.example`, README env table; dropped the transitional `resourceId` from the `Product` type + repository mapping (DB `resource_id` column left in place, harmless).
 
-### Block 3 — Deploy to Amplify (~half day)
+### Block 3 — Containerize + deploy to Cloud Run (~half day)
 
-- [ ] **N3.1** Create Amplify app from GitHub repo.
-- [ ] **N3.2** Port env vars into Amplify Production + Preview environments (add `DATABASE_URL`, drop LibreBooking vars).
-- [ ] **N3.3** Add `rentals.bachmancc.org` custom domain in Amplify; cut GoDaddy CNAME (lower TTL first).
-- [ ] **N3.4** Register production webhook URLs in the PayPal dashboard against the Amplify HTTPS URL.
+- [ ] **N3.1** Add `output: 'standalone'` to `next.config` + a multi-stage `Dockerfile` (Node 22, non-root, port 8080); build/run locally to verify.
+- [ ] **N3.2** Create the Cloud Run service (min-instances 0, region near Neon/Upstash `us-east-1`, e.g. `us-east1`); push image via Artifact Registry (Cloud Build or `gcloud run deploy --source`).
+- [ ] **N3.3** Set env vars as Cloud Run service config/secrets (add `DATABASE_URL`, `STAFF_NOTIFICATION_EMAIL`; no LibreBooking vars). Use Secret Manager for secrets.
+- [ ] **N3.4** Map `rentals.bachmancc.org` (Cloud Run domain mapping) and cut the GoDaddy CNAME (lower TTL first).
+- [ ] **N3.5** Register the production PayPal webhook URL against the Cloud Run HTTPS URL.
 
 ### Block 4 — Product & policy decisions (BCC admin, parallelizable with dev)
 
@@ -160,6 +163,7 @@ Blocks production cutover. Est. ~3 days.
 - **P1.2** (2026-07-09) — Scheduler schema (`items` minimal + `reservations` + partial index) authored in `lib/scheduler/db/schema.sql` and applied to **both** Neon branches (`dev` via `npm run db:apply`, `main` via `npm run db:apply:prod`; both idempotent, both empty and verified). Overlap query + integrity CHECKs verified in a rolled-back transaction; `DATABASE_URL`/`DATABASE_URL_DEV` registered in `lib/env.ts` + README.
 - **P1.3 + P1.5** (2026-07-09) — Scheduler client (`lib/scheduler/{client,db,types,errors}.ts`) built on `pg` with an advisory-lock transaction for race-safe booking; 4 methods verified end-to-end against Neon. `pg`/`@types/pg` added; `vitest.config.ts` aliases `server-only` for tests.
 - **P1.6** (2026-07-13) — Unit tests for the DB-backed data layer: `lib/scheduler/client.test.ts` (all 4 scheduler methods) + `lib/products/repository.test.ts` (item/price→`Product` mapping + cache), both mocking the `lib/scheduler/db.ts` seam via `vi.mock`. 25 new tests; full suite 43 pass; typecheck clean. **Block 1 (build scheduler) complete** — next up is Block 2 (swap call sites + ICS feed).
+- **Block 2 — scheduler swap + ICS + staff email** (2026-07-13) — Cut the live order flow from LibreBooking to `lib/scheduler` (N2.3/N2.4): `preflight` checks `getAvailability().isAvailable` + enforces `validateBooking`; `fulfill` calls `scheduler.createReservation` with the embedded customer and catches `SchedulerConflictError`; the availability API returns PII-free windows. Added the ICS feed (N2.5) and staff notification email + `STAFF_NOTIFICATION_EMAIL` (N2.6). Deleted `lib/librebooking/` and all `LIBREBOOKING_*`/`LB_RESOURCE_ID_*` vars; dropped `resourceId` from the product type/repository (N2.7). **Hosting target changed Amplify → GCP Cloud Run**, so N2.1 (Next 16→15 downgrade) and N2.2 (Amplify audit) were dropped and Next 16 is kept; Block 3 is now containerize + Cloud Run.
 - **Products in DB + P1.4 + P1.7** (2026-07-10) — Reversed the P1.2 "config is source of truth" decision: the **database now owns the full product**. `items` expanded (content, policy, `available_hours` jsonb, transitional `resource_id`) + new `item_prices` table (day/time-scoped rows; flat now, variable-pricing-ready). `lib/products/config.ts` replaced by client-safe `lib/products/types.ts` + async `lib/products/repository.ts` (DB→`Product` mapper, 30s per-instance cache); the 6 `getProduct`/`ALL_PRODUCTS` call sites now `await`. `quote()` resolves the rate from price rows (`resolveRate`). `lib/scheduler/policy.ts` (P1.4) + buffer plumbing added. Seed script + `db:seed`/`db:seed:prod` seeded both Neon branches (P1.7). Typecheck clean (only pre-existing BookingWidget errors remain), 18 tests pass, storefront verified rendering products from the DB.
 
 ---
@@ -174,3 +178,5 @@ Blocks production cutover. Est. ~3 days.
 - **2026-07-09** — P1.3 + P1.5 complete: `lib/scheduler/` client (`getAvailability`/`createReservation`/`cancelReservation`/`getReservation`) on `pg` with advisory-lock booking, plus Zod types; verified against Neon.
 - **2026-07-10** — Products moved into Postgres (reverses the P1.2 minimal-`items` decision): DB is source of truth for the full product; `items` expanded + new `item_prices` table (variable-pricing-ready). P1.4 (`lib/scheduler/policy.ts` + buffer plumbing) and P1.7 (seed script, both branches seeded) complete.
 - **2026-07-13** — P1.6 complete: mocked-`pg` unit tests for `lib/scheduler/client.ts` + `lib/products/repository.ts` (25 tests; suite 43 pass). Block 1 done.
+- **2026-07-13** — Hosting target changed **AWS Amplify → GCP Cloud Run** (Amplify caps at Next 15; Cloud Run runs Next 16 in a container at ~$0/mo). N2.1 (downgrade) + N2.2 (Amplify audit) dropped.
+- **2026-07-13** — Block 2 complete: order flow booked against `lib/scheduler` instead of LibreBooking; LibreBooking module + env vars deleted; ICS feed + staff notification email added.

@@ -25,7 +25,6 @@ type ItemRow = {
   lead_hours: number;
   horizon_days: number;
   available_hours: unknown;
-  resource_id: number | null;
 };
 
 type PriceRow = {
@@ -49,7 +48,7 @@ const availableHoursSchema = z
 const ITEM_COLUMNS = `
   slug, name, type, total_stock, short_description, long_description, highlights,
   image, pricing_unit, min_minutes, max_minutes, buffer_minutes, lead_hours,
-  horizon_days, available_hours, resource_id`;
+  horizon_days, available_hours`;
 
 function toPriceRule(row: PriceRow): PriceRule {
   return {
@@ -112,7 +111,6 @@ function mapProduct(item: ItemRow, prices: PriceRule[]): Product {
         ? { openHour: hours.openHour, closeHour: hours.closeHour, slotMinutes: hours.slotMinutes }
         : undefined,
     bufferMinutes: item.buffer_minutes,
-    resourceId: item.resource_id ?? undefined,
   };
 }
 

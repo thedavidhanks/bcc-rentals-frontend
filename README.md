@@ -1,58 +1,39 @@
 # BCC Rentals Frontend
 
-A Next.js storefront for the Bachman Community Center that lets the public reserve rentals (tent, popcorn machine, party room) with online payment. Reservations are written to BCC's existing **LibreBooking** instance via its REST API.
+A Next.js storefront for the Bachman Community Center that lets the public reserve rentals (tent, popcorn machine, party room) with online payment. The product catalog and reservations live in **Neon Postgres**, managed by the in-repo scheduler (`lib/scheduler`).
 
 ## Architecture at a glance
 
 - **Next.js 16 App Router + TypeScript** — server actions and route handlers keep all secrets server-side.
 - **Stripe Checkout** for cards and **PayPal Smart Buttons** for PayPal/Venmo.
-- **LibreBooking** is the system of record for reservations. We call it from a service account.
-- **Upstash Redis** caches the LibreBooking session token, holds pending orders during payment, and dedupes webhook deliveries. No SQL database.
-- **Resend** sends customer confirmations. Staff notifications are handled by LibreBooking's built-in "Notify on Reservation Created".
-- **Confirm-then-book**: we never write to LibreBooking until payment succeeds. If the rare race conflict happens, the customer is auto-refunded.
+- **Neon Postgres** is the durable system of record: the product catalog (`items` + `item_prices`) and `reservations`. The scheduler (`lib/scheduler`) books race-safely with a per-item advisory lock.
+- **Upstash Redis** holds only ephemeral state — pending orders during payment (1h TTL), fulfill locks, and webhook dedup keys. Losing it never corrupts a business record.
+- **Resend** sends both the customer confirmation and a staff notification (to `STAFF_NOTIFICATION_EMAIL`) on each booking.
+- **Confirm-then-book**: reservations are never written until payment succeeds. If the rare race conflict happens, the customer is auto-refunded.
+- An **ICS calendar feed** per item is served at `/api/calendar/[itemSlug]` for staff to subscribe to.
 
-## Prerequisites — BCC admin tasks
+## Prerequisites — data setup
 
 These must be done before the frontend can run end-to-end.
 
-### 1. Enable the LibreBooking REST API
+### 1. Provision Neon Postgres
 
-Today, hitting `http://bccreservations.thedavidhanks.com/Web/Services/index.php` returns a notice that the API is disabled.
+Create a Neon project with a `main` (prod) and `dev` branch. Capture the pooled connection string as `DATABASE_URL` and the dev-branch direct endpoint as `DATABASE_URL_DEV`.
 
-On the LibreBooking server, edit `config/config.php`:
-
-```php
-$conf['settings']['api']['enabled'] = 'true';
-```
-
-If you're running LibreBooking via Docker, ensure `config/config.php` is bind-mounted (or set the equivalent env var in your `docker-compose.yml`), then restart the container.
-
-Verify with:
+### 2. Apply the schema and seed products
 
 ```bash
-curl -X POST http://bccreservations.thedavidhanks.com/Web/Services/index.php/Authentication/Authenticate \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"..."}'
+npm run db:apply        # applies lib/scheduler/db/schema.sql to the dev branch
+npm run db:apply:prod   # same against the main branch
+npm run db:seed         # seeds tent / popcorn / party-room into the dev branch
+npm run db:seed:prod    # same against the main branch
 ```
 
-You should get back JSON containing `sessionToken` and `userId`.
+The catalog is DB-owned, so adding/editing products is data, not code (see "Adding a new rental product" below).
 
-### 2. Create the service account
+### 3. Verify the Resend sending domain
 
-In LibreBooking admin: **Application Management → Users → Add User**.
-- Username: `rentals-api` (used for `LIBREBOOKING_SERVICE_USER`).
-- Strong random password → `LIBREBOOKING_SERVICE_PASS`.
-- Group with permissions to: read all resources, read availability, **create reservations**, **create users**.
-
-### 3. Configure resource notifications
-
-For each rentable resource (tent, popcorn, party room, and future items): **Resources → [resource] → Notifications → Notify on Created** → add `reservations@bachmancc.org`.
-
-Capture each resource's numeric ID (visible in the URL or resource list) — these become the `LB_RESOURCE_ID_*` env vars.
-
-### 4. (Strongly recommended) Put LibreBooking behind HTTPS
-
-The LibreBooking instance is currently HTTP. Service-account credentials would traverse the wire in cleartext. Use Cloudflare Tunnel, Caddy reverse proxy, or any other TLS terminator before going live.
+Confirm `bachmancc.org` (SPF/DKIM) in Resend so both the customer confirmation and the `STAFF_NOTIFICATION_EMAIL` staff notification deliver.
 
 ## Local development with VS Code Dev Containers
 
@@ -63,6 +44,47 @@ This project ships with a `.devcontainer/` setup. You don't need Node installed 
 3. The container builds, mounts the workspace, and runs `npm install` automatically. The Claude Code CLI and `gcloud` SDK are installed as part of the container.
 4. Copy env vars: `cp .env.local.example .env.local` and fill in real values (see below).
 5. Start the dev server: `npm run dev` → http://localhost:3000.
+
+### Git authentication (SSH agent forwarding)
+
+The repo uses an SSH remote (`git@github.com:...`), so git inside the container needs your GitHub SSH key. Rather than copying the private key into the container, we rely on **SSH agent forwarding**: your key stays in your host's ssh-agent, VS Code forwards the agent socket into the container, and it re-forwards on every rebuild. The private key never enters the container, and nothing host-specific is committed to the repo.
+
+Set up the agent **once per host** (substitute your own key filename for `id_ed25519` below).
+
+**Windows**
+
+1. Enable the OpenSSH agent service — **elevated** PowerShell (*Run as Administrator*):
+   ```powershell
+   Get-Service ssh-agent | Set-Service -StartupType Automatic
+   Start-Service ssh-agent
+   ```
+2. Load your key — **normal, non-elevated** PowerShell (elevated puts the key in the Administrator's agent, which VS Code won't forward):
+   ```powershell
+   ssh-add $env:USERPROFILE\.ssh\id_ed25519
+   ssh-add -l   # should list your key's fingerprint
+   ```
+
+**macOS**
+
+1. Add your key to the agent and macOS Keychain (agent runs by default):
+   ```bash
+   ssh-add --apple-use-keychain ~/.ssh/id_ed25519
+   ```
+2. Persist it across reboots by adding to `~/.ssh/config`:
+   ```
+   Host github.com
+     AddKeysToAgent yes
+     UseKeychain yes
+     IdentityFile ~/.ssh/id_ed25519
+   ```
+
+Then **Dev Containers: Reopen in Container** so VS Code captures the agent. Verify inside the container:
+
+```bash
+ssh -T git@github.com   # → "Hi <username>! You've successfully authenticated"
+```
+
+The host agent persists your key across reboots, so this is a one-time setup — it works automatically after every container rebuild, and for any other Dev Container you open on the same host. (A plain `docker run` outside VS Code does not get the forwarded agent.)
 
 ### Claude Code + Vertex auth (one-time, per container rebuild)
 
@@ -81,9 +103,6 @@ Copy `.env.local.example` to `.env.local`. All vars are validated at boot via `l
 | Var | Purpose |
 | --- | --- |
 | `NEXT_PUBLIC_SITE_URL` | Public site URL — used in payment redirects. |
-| `LIBREBOOKING_BASE_URL` | LibreBooking origin (no trailing `/Web`). |
-| `LIBREBOOKING_SERVICE_USER` / `_PASS` | Service-account credentials. |
-| `LB_RESOURCE_ID_TENT` / `_POPCORN` / `_PARTY_ROOM` | Numeric resource IDs. |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe server keys. |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe client key. |
 | `PAYPAL_ENV` | `sandbox` or `live`. |
@@ -91,6 +110,7 @@ Copy `.env.local.example` to `.env.local`. All vars are validated at boot via `l
 | `NEXT_PUBLIC_PAYPAL_CLIENT_ID` | PayPal client SDK config. |
 | `RESEND_API_KEY` | Resend API key. |
 | `EMAIL_FROM` | From address (must be a verified Resend domain). |
+| `STAFF_NOTIFICATION_EMAIL` | Recipient for new-reservation staff notifications (e.g. `reservations@bachmancc.org`). |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Upstash REST credentials. |
 | `DATABASE_URL` | Neon Postgres runtime (pooled) connection — scheduler system of record. |
 | `DATABASE_URL_DEV` | Neon dev-branch direct endpoint; used by `npm run db:apply` for DDL (tooling only). |
@@ -108,13 +128,14 @@ Copy `.env.local.example` to `.env.local`. All vars are validated at boot via `l
    # example: ngrok http --url=devoutly-edging-marigold.ngrok-free.dev 3000
    ```
    Register `https://<your-reserved>.ngrok-free.dev/api/webhooks/paypal` in your PayPal app's webhook settings and copy the resulting webhook ID into `PAYPAL_WEBHOOK_ID`.
-3. **LibreBooking test**: have BCC create a "Test Resource" and point the `LB_RESOURCE_ID_*` envs at its ID. Verify the booking appears in LibreBooking after a successful payment.
+3. **Database**: point `DATABASE_URL`/`DATABASE_URL_DEV` at your Neon branches and run the `db:apply` + `db:seed` scripts (see prerequisites). Bookings are written to the `reservations` table.
 
 ### Smoke checklist
-- Picking a date shows availability that respects existing LibreBooking events.
-- Stripe payment → webhook fires → reservation appears in LibreBooking → confirmation email arrives → success page renders.
+- Picking a date shows availability that respects existing reservations (`/api/availability`).
+- Stripe payment → webhook fires → reservation row written to Neon → confirmation + staff emails arrive → success page renders.
 - PayPal sandbox path equivalent.
 - Two browsers attempting the same slot → second one gets a clean error and an automatic refund.
+- `/api/calendar/[itemSlug]` returns a valid ICS feed of the item's booked windows.
 
 ## Useful scripts
 
@@ -122,27 +143,30 @@ Copy `.env.local.example` to `.env.local`. All vars are validated at boot via `l
 npm run dev        # next dev
 npm run build      # next build
 npm run typecheck  # tsc --noEmit
-npm run lint       # next lint
+npm run lint       # eslint .
 npm run test       # vitest run
 npm run test:watch
+npm run db:apply / db:apply:prod   # apply schema.sql to the dev / main Neon branch
+npm run db:seed  / db:seed:prod    # upsert seed products into the dev / main branch
 ```
 
-## Deployment (Vercel)
+## Deployment (GCP Cloud Run)
 
-- Import the repo into Vercel.
-- Set every env var (above) for **Production** and **Preview** (use sandbox keys + a LibreBooking test resource for Preview).
-- Custom domain: `rentals.bachmancc.org`.
-- Production webhook URLs must be registered in Stripe + PayPal dashboards; rotate signing secrets into Vercel.
+The app is containerized (`output: 'standalone'`) and deployed to Cloud Run — see Block 3 in [docs/EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md) for the current cutover steps.
+
+- Deploy the container to a Cloud Run service (min-instances 0) in a region near the Neon/Upstash `us-east-1` data (e.g. `us-east1`).
+- Set every env var (above) as Cloud Run service config; keep secrets in Secret Manager.
+- Custom domain: `rentals.bachmancc.org` via Cloud Run domain mapping.
+- Register production webhook URLs in the Stripe + PayPal dashboards against the Cloud Run HTTPS URL.
 
 ## Adding a new rental product
 
-This is intentionally a small, additive change:
+Products live in Postgres, so this is **data, not code** — no new pages, API routes, env vars, or deploys:
 
-1. Add a numeric `LB_RESOURCE_ID_<NAME>` env var (in `.env.local`, Vercel, and Zod schema in `lib/env.ts`).
-2. Append an entry to `PRODUCTS` in `lib/products/config.ts`.
-3. Drop a hero image into `public/images/`.
+1. Insert an `items` row (+ one or more `item_prices` rows) into Neon. `scripts/db/seed-products.mjs` (`npm run db:seed`) is the reference for the row shape; it upserts by `slug`.
+2. Drop a hero image into `public/images/` and set the row's `image` column to it.
 
-No new pages, no new API routes — `/rentals/[slug]` handles all products.
+`/rentals/[slug]`, the storefront listing, and the availability/checkout APIs all resolve products through `lib/products/repository.ts`, so a new active row appears automatically once the 30s catalog cache expires.
 
 ## Project layout
 
@@ -150,6 +174,7 @@ No new pages, no new API routes — `/rentals/[slug]` handles all products.
 app/
   api/
     availability/                 GET availability for a product
+    calendar/[itemSlug]/          GET ICS feed of an item's booked windows
     checkout/stripe/              POST → Stripe Checkout Session
     checkout/paypal/              POST create-order, POST capture-order
     webhooks/stripe/              Stripe webhook (signature verified)
@@ -159,11 +184,11 @@ app/
   page.tsx                        Landing
 lib/
   env.ts                          Zod-validated env at boot
-  redis.ts                        Upstash client
+  redis.ts                        Upstash client (ephemeral state only)
   logger.ts                       pino logger
-  librebooking/                   typed API wrapper, session cache
-  products/                       product config + pricing logic
-  orders/                         pending order store + idempotent fulfill
+  scheduler/                      Neon-backed reservations (client, db, policy, types, errors)
+  products/                       DB-backed catalog repository + pricing logic
+  orders/                         pending order store + preflight + idempotent fulfill
   payments/                       stripe, paypal, refund helper
   email/                          Resend + confirmation template
 components/ui/                    shadcn-style primitives
@@ -172,14 +197,13 @@ components/ui/                    shadcn-style primitives
 ## Risk areas (already mitigated)
 
 - **Webhook idempotency** — every event ID is recorded in Redis with `SET NX`; `fulfillOrder` is idempotent and exits early if the order is already confirmed.
-- **Double-booking race** — confirm-then-book pattern + per-order fulfillment lock + final availability re-check inside the lock + automatic refund on conflict.
-- **LibreBooking session expiry / outage** — token cached in Redis with mutex'd refresh; 401 triggers one re-auth retry; failures after payment surface a "we'll email you" page and remain visible to BCC staff via LibreBooking's notification.
+- **Double-booking race** — confirm-then-book pattern + per-order fulfillment lock + a per-item `pg_advisory_xact_lock` with a capacity re-check inside the booking transaction + automatic refund on conflict.
 
 ## Open TODOs
 
 - Confirm actual rental pricing per product.
 - Confirm party room hours and slot length.
 - Confirm min lead time and max advance window per product.
-- Verify rental resource IDs in LibreBooking.
+- Define fungible inventory (chairs, tables, plates, etc.) with `total_stock` quantities.
 - Verify Resend sending domain (`bachmancc.org`).
 - Final cancellation/refund policy text in the confirmation email.

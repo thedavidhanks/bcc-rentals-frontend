@@ -1,6 +1,7 @@
 import "server-only";
 import { v4 as uuid } from "uuid";
-import { librebooking } from "@/lib/librebooking/client";
+import { scheduler } from "@/lib/scheduler/client";
+import { validateBooking, PolicyError } from "@/lib/scheduler/policy";
 import { getProduct } from "@/lib/products/repository";
 import { quote } from "@/lib/products/pricing";
 import { createPendingOrder, type Customer } from "./store";
@@ -32,23 +33,25 @@ export class PreflightError extends Error {
 export async function preflightCheckout(input: CheckoutInput): Promise<Preflight> {
   const product = await getProduct(input.slug);
   if (!product) throw new PreflightError("Unknown product", 404);
-  if (product.resourceId == null) throw new PreflightError("Product unavailable", 409);
 
   const q = quote(product, input.startISO, input.endISO);
 
-  const avail = await librebooking.getResourceAvailability({
-    resourceId: product.resourceId,
-    startDateTime: input.startISO,
-    endDateTime: input.endISO,
+  // Enforce per-item policy (lead time / horizon / hours / slot alignment).
+  try {
+    validateBooking(product, input.startISO, input.endISO);
+  } catch (err) {
+    if (err instanceof PolicyError) throw new PreflightError(err.message, 400);
+    throw err;
+  }
+
+  const avail = await scheduler.getAvailability({
+    itemSlug: product.slug,
+    startISO: input.startISO,
+    endISO: input.endISO,
+    quantity: 1,
+    bufferMinutes: product.bufferMinutes,
   });
-  const overlapping = avail.reservations.filter((r) => {
-    const rStart = new Date(`${r.startDate}${r.startTime ? `T${r.startTime}` : ""}`).getTime();
-    const rEnd = new Date(`${r.endDate}${r.endTime ? `T${r.endTime}` : ""}`).getTime();
-    const inStart = new Date(input.startISO).getTime();
-    const inEnd = new Date(input.endISO).getTime();
-    return rStart < inEnd && rEnd > inStart;
-  });
-  if (overlapping.length > 0) {
+  if (!avail.isAvailable) {
     throw new PreflightError("Slot is no longer available", 409);
   }
 

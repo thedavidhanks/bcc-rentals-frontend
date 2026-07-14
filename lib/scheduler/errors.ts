@@ -13,8 +13,8 @@ export class SchedulerError extends Error {
 
 /**
  * Requested capacity is not available for the window (unique item already
- * booked, or fungible stock exhausted). Mirrors LibreBookingConflictError so
- * the fulfill path can branch on it and trigger an automatic refund.
+ * booked, or fungible stock exhausted). The fulfill path branches on this to
+ * trigger an automatic refund.
  */
 export class SchedulerConflictError extends SchedulerError {
   constructor(
