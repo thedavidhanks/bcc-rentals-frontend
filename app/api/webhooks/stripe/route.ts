@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { env } from "@/lib/env";
-import { stripe } from "@/lib/payments/stripe";
+import { getStripe } from "@/lib/payments/stripe";
 import { fulfillOrder } from "@/lib/orders/fulfill";
 import { recordWebhookEvent } from "@/lib/orders/store";
 import { logger } from "@/lib/logger";
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(rawBody, signature, env.STRIPE_WEBHOOK_SECRET);
+    event = getStripe().webhooks.constructEvent(rawBody, signature, env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     logger.warn({ err }, "stripe webhook signature failed");
     return NextResponse.json({ error: "Bad signature" }, { status: 400 });

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { env } from "@/lib/env";
-import { stripe } from "@/lib/payments/stripe";
+import { getStripe } from "@/lib/payments/stripe";
 import { preflightCheckout, PreflightError } from "@/lib/orders/preflight";
 import { customerSchema } from "@/lib/orders/store";
 import { logger } from "@/lib/logger";
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   try {
     const { orderId, totalCents, productName } = await preflightCheckout(parsed.data);
 
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       client_reference_id: orderId,

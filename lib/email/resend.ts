@@ -7,7 +7,14 @@ import type { Order } from "@/lib/orders/store";
 import type { Product } from "@/lib/products/types";
 import { renderConfirmationHtml } from "./templates/confirmation";
 
-const resend = new Resend(env.RESEND_API_KEY);
+// Lazy: the Resend constructor throws on a missing key, so defer creation until
+// first use rather than at module load — otherwise `next build` (which evaluates
+// this module during "Collecting page data" with no secrets) would fail.
+let resend: Resend | undefined;
+function getResend(): Resend {
+  if (!resend) resend = new Resend(env.RESEND_API_KEY);
+  return resend;
+}
 
 export async function sendBookingConfirmation(input: {
   order: Order;
@@ -26,7 +33,7 @@ export async function sendBookingConfirmation(input: {
     orderId: order.id,
   });
 
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: env.EMAIL_FROM,
     to: order.customer.email,
     subject: `Your BCC rental is confirmed — ${product.name}`,
@@ -79,7 +86,7 @@ export async function sendStaffNotification(input: {
     </table>
   </body></html>`;
 
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: env.EMAIL_FROM,
     to: env.STAFF_NOTIFICATION_EMAIL,
     subject: `New rental: ${product.name} — ${c.firstName} ${c.lastName}`,
