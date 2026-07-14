@@ -29,7 +29,14 @@ const envSchema = z.object({
   DATABASE_URL_DEV: z.url().optional(),
 });
 
-const parsed = envSchema.safeParse(process.env);
+// `SKIP_ENV_VALIDATION=1` bypasses the parse so `next build` (and CI/typecheck)
+// can run without real secrets — e.g. the Docker builder stage. The container's
+// runner stage leaves the flag unset, so real env is still validated at boot.
+// Safe because every DB/product route is force-dynamic: nothing renders or
+// queries the DB during the build.
+const parsed = process.env.SKIP_ENV_VALIDATION
+  ? { success: true as const, data: process.env as unknown as z.infer<typeof envSchema> }
+  : envSchema.safeParse(process.env);
 
 if (!parsed.success) {
   console.error("Invalid environment variables:", z.treeifyError(parsed.error));

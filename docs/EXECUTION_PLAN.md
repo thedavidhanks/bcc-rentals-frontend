@@ -2,7 +2,7 @@
 
 Living document tracking execution of [ARCHITECTURE_PLAN_B.md](./ARCHITECTURE_PLAN_B.md). Update task statuses as work progresses and commit each change.
 
-**Last updated:** 2026-07-14 · **Progress:** Block 1 ✅ (P1.1–P1.7) · Block 2 ✅ (N2.3–N2.7; N2.1/N2.2 dropped — see hosting note) — **scheduler is now the live booking backend; LibreBooking removed**
+**Last updated:** 2026-07-14 · **Progress:** Block 1 ✅ (P1.1–P1.7) · Block 2 ✅ (N2.3–N2.7; N2.1/N2.2 dropped — see hosting note) · Block 3 🚧 (N3.1 ✅ containerized; N3.2–N3.5 = user-run GCP/DNS/PayPal infra, see [DEPLOY_CLOUD_RUN.md](./DEPLOY_CLOUD_RUN.md)) — **scheduler is now the live booking backend; LibreBooking removed**
 
 ---
 
@@ -120,7 +120,7 @@ Blocks production cutover. Est. ~3 days.
 
 ### Block 3 — Containerize + deploy to Cloud Run (~half day)
 
-- [ ] **N3.1** Add `output: 'standalone'` to `next.config` + a multi-stage `Dockerfile` (Node 22, non-root, port 8080); build/run locally to verify.
+- [x] **N3.1** ✅ Added `output: 'standalone'` to [next.config.ts](../next.config.ts) + a multi-stage [Dockerfile](../Dockerfile) (Node 22 alpine, non-root `node` user, port 8080) and [.dockerignore](../.dockerignore). Added a `SKIP_ENV_VALIDATION` escape hatch to [lib/env.ts](../lib/env.ts) so `next build` (and CI) runs without real secrets — the runner leaves it unset so runtime env is still Zod-validated at boot; `NEXT_PUBLIC_PAYPAL_CLIENT_ID` is passed as a build `ARG` since it's client-inlined. **Docker isn't installed in this devcontainer**, so verification was done via `next build` (produces `.next/standalone/server.js`) + booting `node server.js` on 8080: `/` (200, DB-backed), `/api/calendar/tent` (200 ICS), `/api/availability` (200 PII-free JSON) all pass; typecheck/lint clean, 43 tests green. The actual `docker build` runs remotely via Cloud Build in N3.2 (`gcloud run deploy --source`). Runbook for N3.2–N3.5: [docs/DEPLOY_CLOUD_RUN.md](./DEPLOY_CLOUD_RUN.md).
 - [ ] **N3.2** Create the Cloud Run service (min-instances 0, region near Neon/Upstash `us-east-1`, e.g. `us-east1`); push image via Artifact Registry (Cloud Build or `gcloud run deploy --source`).
 - [ ] **N3.3** Set env vars as Cloud Run service config/secrets (add `DATABASE_URL`, `STAFF_NOTIFICATION_EMAIL`; no LibreBooking vars). Use Secret Manager for secrets.
 - [ ] **N3.4** Map `rentals.bachmancc.org` (Cloud Run domain mapping) and cut the GoDaddy CNAME (lower TTL first).
@@ -182,3 +182,4 @@ Blocks production cutover. Est. ~3 days.
 - **2026-07-13** — Hosting target changed **AWS Amplify → GCP Cloud Run** (Amplify caps at Next 15; Cloud Run runs Next 16 in a container at ~$0/mo). N2.1 (downgrade) + N2.2 (Amplify audit) dropped.
 - **2026-07-13** — Block 2 complete: order flow booked against `lib/scheduler` instead of LibreBooking; LibreBooking module + env vars deleted; ICS feed + staff notification email added.
 - **2026-07-14** — README overhauled to the current stack (Neon + Cloud Run); all LibreBooking/Vercel/Amplify prose removed. Architecture table DNS/observability rows corrected to Cloud Run/GCP.
+- **2026-07-14** — N3.1 complete: repo containerized (`output: 'standalone'` + multi-stage `Dockerfile` + `.dockerignore`); `SKIP_ENV_VALIDATION` added to `lib/env.ts` for secret-free builds. Standalone server verified booting on 8080 (storefront/ICS/availability all 200). Added `docs/DEPLOY_CLOUD_RUN.md` runbook for the user-run infra steps N3.2–N3.5.

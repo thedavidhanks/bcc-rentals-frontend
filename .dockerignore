@@ -1,0 +1,36 @@
+# Keep the Docker build context small and never bake secrets/artifacts into it.
+node_modules
+.next
+out
+build
+coverage
+
+# secrets — must never enter the image
+.env
+.env*.local
+.env.local
+
+# vcs / tooling / docs
+.git
+.gitignore
+.devcontainer
+.vscode
+.claude
+.mcp.json
+docs
+README.md
+*.md
+
+# build/test artifacts
+*.tsbuildinfo
+next-env.d.ts
+
+# tests (not needed at runtime)
+**/*.test.ts
+**/*.test.tsx
+vitest.config.ts
+vitest.setup.ts
+
+# misc
+.DS_Store
+npm-debug.log*
