@@ -5,10 +5,6 @@ const envSchema = z.object({
   NEXT_PUBLIC_SITE_URL: z.url(),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 
-  STRIPE_SECRET_KEY: z.string().startsWith("sk_"),
-  STRIPE_WEBHOOK_SECRET: z.string().startsWith("whsec_"),
-  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().startsWith("pk_"),
-
   PAYPAL_ENV: z.enum(["sandbox", "live"]),
   PAYPAL_CLIENT_ID: z.string().min(1),
   PAYPAL_CLIENT_SECRET: z.string().min(1),

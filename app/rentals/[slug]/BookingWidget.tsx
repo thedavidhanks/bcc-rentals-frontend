@@ -5,7 +5,6 @@ import { addDays, addHours, format, startOfDay } from "date-fns";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
 import { PayPalButtons, PayPalScriptProvider } from "@paypal/react-paypal-js";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,7 +37,6 @@ export function BookingWidget({ product }: { product: Product }) {
     email: "",
     phone: "",
   });
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const range = useMemo(() => {
@@ -74,31 +72,7 @@ export function BookingWidget({ product }: { product: Product }) {
     emailValid &&
     customer.phone.trim().length >= 7;
 
-  const ready = range && priceQuote && "totalCents" in priceQuote && customerComplete && !submitting;
-
-  async function startStripe() {
-    if (!range) return;
-    setError(null);
-    setSubmitting(true);
-    try {
-      const res = await fetch("/api/checkout/stripe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          slug: product.slug,
-          startISO: range.startISO,
-          endISO: range.endISO,
-          customer,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Checkout failed");
-      window.location.href = data.url;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Checkout failed");
-      setSubmitting(false);
-    }
-  }
+  const ready = range && priceQuote && "totalCents" in priceQuote && customerComplete;
 
   return (
     <Card>
@@ -229,15 +203,11 @@ export function BookingWidget({ product }: { product: Product }) {
         {error && <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
 
         <div className="space-y-3">
-          <Button
-            type="button"
-            size="lg"
-            className="w-full"
-            disabled={!ready}
-            onClick={startStripe}
-          >
-            Pay with card
-          </Button>
+          {!ready && (
+            <p className="text-center text-sm text-muted-foreground">
+              Pick a date and fill in your details to pay.
+            </p>
+          )}
 
           {ready && (
             <PayPalScriptProvider
@@ -246,8 +216,7 @@ export function BookingWidget({ product }: { product: Product }) {
                 currency: "USD",
                 intent: "capture",
                 components: "buttons,funding-eligibility",
-                "enable-funding": "venmo,paylater",
-                "disable-funding": "card",
+                "enable-funding": "venmo,paylater,card",
               }}
             >
               <PayPalButtons

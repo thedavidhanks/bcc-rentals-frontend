@@ -2,7 +2,7 @@
 
 Living document tracking execution of [ARCHITECTURE_PLAN_B.md](./ARCHITECTURE_PLAN_B.md). Update task statuses as work progresses and commit each change.
 
-**Last updated:** 2026-07-14 · **Progress:** Block 1 ✅ (P1.1–P1.7) · Block 2 ✅ (N2.3–N2.7; N2.1/N2.2 dropped — see hosting note) · Block 3 🚧 (N3.1 ✅ containerized; N3.2–N3.5 = user-run GCP/DNS/PayPal infra, see [DEPLOY_CLOUD_RUN.md](./DEPLOY_CLOUD_RUN.md)) — **scheduler is now the live booking backend; LibreBooking removed**
+**Last updated:** 2026-07-15 · **Progress:** Block 1 ✅ (P1.1–P1.7) · Block 2 ✅ (N2.3–N2.7; N2.1/N2.2 dropped — see hosting note) · Block 3 🚧 (N3.1 ✅ containerized · N3.2 ✅ Cloud Run service live · N3.3 ✅ env vars set; N3.5 = PayPal webhook remaining) · Block D 🚧 demo state (D1 ✅ Stripe removed; D2–D5 open) — **custom-domain mapping + Secret Manager deferred to Block G, post-demo** — **scheduler is the live booking backend; LibreBooking + Stripe removed**
 
 ---
 
@@ -121,10 +121,23 @@ Blocks production cutover. Est. ~3 days.
 ### Block 3 — Containerize + deploy to Cloud Run (~half day)
 
 - [x] **N3.1** ✅ Added `output: 'standalone'` to [next.config.ts](../next.config.ts) + a multi-stage [Dockerfile](../Dockerfile) (Node 22 alpine, non-root `node` user, port 8080) and [.dockerignore](../.dockerignore). Added a `SKIP_ENV_VALIDATION` escape hatch to [lib/env.ts](../lib/env.ts) so `next build` (and CI) runs without real secrets — the runner leaves it unset so runtime env is still Zod-validated at boot; `NEXT_PUBLIC_PAYPAL_CLIENT_ID` is passed as a build `ARG` since it's client-inlined. **Docker isn't installed in this devcontainer**, so verification was done via `next build` (produces `.next/standalone/server.js`) + booting `node server.js` on 8080: `/` (200, DB-backed), `/api/calendar/tent` (200 ICS), `/api/availability` (200 PII-free JSON) all pass; typecheck/lint clean, 43 tests green. The actual `docker build` runs remotely via Cloud Build in N3.2 (`gcloud run deploy --source`). Runbook for N3.2–N3.5: [docs/DEPLOY_CLOUD_RUN.md](./DEPLOY_CLOUD_RUN.md).
-- [ ] **N3.2** Create the Cloud Run service (min-instances 0, region near Neon/Upstash `us-east-1`, e.g. `us-east1`); push image via Artifact Registry (Cloud Build or `gcloud run deploy --source`).
-- [ ] **N3.3** Set env vars as Cloud Run service config/secrets (add `DATABASE_URL`, `STAFF_NOTIFICATION_EMAIL`; no LibreBooking vars). Use Secret Manager for secrets.
-- [ ] **N3.4** Map `rentals.bachmancc.org` (Cloud Run domain mapping) and cut the GoDaddy CNAME (lower TTL first).
-- [ ] **N3.5** Register the production PayPal webhook URL against the Cloud Run HTTPS URL.
+- [x] **N3.2** ✅ Created the Cloud Run service `bcc-rentals` (region `us-east1`, min-instances 0, `--allow-unauthenticated`), deployed from source via Cloud Build (`Dockerfile`). Live at `https://bcc-rentals-558348229437.us-east1.run.app` — verified `/` → `200` on 2026-07-15.
+- [x] **N3.3** ✅ Set the full `lib/env.ts` var list as Cloud Run service config (`--set-env-vars`): `DATABASE_URL`, `STAFF_NOTIFICATION_EMAIL`, PayPal (`PAYPAL_*`, `NEXT_PUBLIC_PAYPAL_CLIENT_ID`), Resend (`RESEND_API_KEY`, `EMAIL_FROM`), Upstash, and Stripe placeholders; no LibreBooking vars. Service boots (Zod validation passes). **Deferred:** secrets are currently plain env vars, **not** Secret Manager — hardening moved to **Block G / G2** ("Use Secret Manager for high-risk secrets"), per demo-first priority.
+- [ ] **N3.5** Register the PayPal webhook URL against the Cloud Run **run.app** HTTPS URL (`.../api/webhooks/paypal`) so payment works in the demo. Re-point to the custom domain in **Block G / G1**.
+
+> **N3.4 (custom domain mapping) moved to Block G / G1** — the front-end must reach demo state (Block D) and get your approval before `rentals.bachmancc.org` is mapped.
+
+### Block D — Demo state 🎯 (next priority; gate before custom domain)
+
+Get the front-end into a demo-ready, approved state on the Cloud Run **run.app** URL **before** mapping `rentals.bachmancc.org` (Block G). "Demo state" = all of:
+
+- [x] **D1 — Stripe removed.** ✅ (2026-07-15) Deleted `app/api/checkout/stripe/route.ts`, `app/api/webhooks/stripe/route.ts`, `lib/payments/stripe.ts`; narrowed the order flow to PayPal-only (`store.ts` `paymentProvider`/`recordWebhookEvent`, `fulfill.ts` `FulfillInput`, `refund.ts`, `preflight.ts` comment). `BookingWidget` lost the Stripe "Pay with card" button (+`startStripe`/`submitting`/unused `Button` import); PayPal funding now enables `card` (guest credit-card path — D2). Dropped `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`/`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` from `lib/env.ts`; removed `stripe` + `@stripe/stripe-js` deps; scrubbed Stripe prose from README, CLAUDE.md, and DEPLOY_CLOUD_RUN.md. Verified: typecheck 0 errors, lint clean, 43 tests pass, `next build` succeeds (only PayPal routes remain). **Cloud Run cleanup pending redeploy:** the live revision's image still requires `STRIPE_*` at boot, so those service env vars must be dropped **in the same `gcloud run deploy` that ships this Stripe-free image** — removing them standalone would fail the old image's boot.
+- [ ] **D2 — Payment works with PayPal or credit card.** PayPal Smart Buttons complete an order end-to-end (PayPal balance **and** card via PayPal's guest card fields) → capture/webhook → reservation written. Requires **N3.5** (PayPal webhook against the run.app URL).
+- [ ] **D3 — Emails sent.** Customer receives a confirmation email on successful rental; staff receive a notification on each reservation (`sendStaffNotification` → `STAFF_NOTIFICATION_EMAIL`). Verify both actually deliver from the deployed service. (Sending-domain SPF/DKIM verification is **N4.5**; for the demo, Resend's default/sandbox sender is acceptable.)
+- [ ] **D4 — UI navigable + approved.** Storefront listing, `/rentals/[slug]`, booking widget, checkout, and success/error pages are coherent and navigable end-to-end. **Requires David's explicit approval** before this box is checked.
+- [ ] **D5 — Admin outlined.** A written outline (not necessarily a built UI) for staff administration: adding/editing products & pricing, and reserving/viewing/blocking time slots. The full build is **Block 6**; D5 only requires the outline so the demo can show the intended admin story. (Interim path today: products via `db:seed` / direct SQL; slots via `status='block'` reservation inserts.)
+
+---
 
 ### Block 4 — Product & policy decisions (BCC admin, parallelizable with dev)
 
@@ -141,6 +154,13 @@ Blocks production cutover. Est. ~3 days.
 - [ ] **N5.2** PayPal (sandbox → live) → webhook → reservation written → email arrives → success page renders.
 - [ ] **N5.3** Two concurrent browsers on the same slot → second sees clean error + auto-refund.
 - [ ] **N5.4** Fungible item: book 50 chairs from stock of 100, verify 50 still available.
+
+### Block G — Go-live hardening (post-demo; after Block D approval)
+
+Deferred out of Block 3 so the demo can be validated on the run.app URL first.
+
+- [ ] **G1** Map `rentals.bachmancc.org` (Cloud Run domain mapping) and cut the GoDaddy CNAME (lower TTL first). *(Was N3.4 — moved here; demo state must be approved first.)* Then re-point the PayPal webhook (N3.5) from the run.app URL to the custom domain.
+- [ ] **G2** Use Secret Manager for high-risk secrets — migrate `DATABASE_URL`, `PAYPAL_CLIENT_SECRET`, `RESEND_API_KEY`, `UPSTASH_REDIS_REST_TOKEN` (and any remaining sensitive vars) from plain Cloud Run env vars to Secret Manager (`--set-secrets`), granting the runtime service account `secretmanager.secretAccessor`. *(Split out of N3.3.)* See [DEPLOY_CLOUD_RUN.md](./DEPLOY_CLOUD_RUN.md) N3.3.
 
 ### Block 6 — Staff admin UI (follow-up sprint, ~2–3 days)
 
@@ -182,4 +202,6 @@ Blocks production cutover. Est. ~3 days.
 - **2026-07-13** — Hosting target changed **AWS Amplify → GCP Cloud Run** (Amplify caps at Next 15; Cloud Run runs Next 16 in a container at ~$0/mo). N2.1 (downgrade) + N2.2 (Amplify audit) dropped.
 - **2026-07-13** — Block 2 complete: order flow booked against `lib/scheduler` instead of LibreBooking; LibreBooking module + env vars deleted; ICS feed + staff notification email added.
 - **2026-07-14** — README overhauled to the current stack (Neon + Cloud Run); all LibreBooking/Vercel/Amplify prose removed. Architecture table DNS/observability rows corrected to Cloud Run/GCP.
+- **2026-07-15** — **D1 complete: Stripe removed.** Deleted the Stripe checkout/webhook routes + `lib/payments/stripe.ts`, narrowed the order flow + `refund`/`store`/`fulfill` to PayPal-only, switched `BookingWidget` to PayPal card funding (covers D2's credit-card path), dropped the `STRIPE_*` env vars and `stripe`/`@stripe/stripe-js` deps, and scrubbed Stripe from README/CLAUDE.md/DEPLOY_CLOUD_RUN.md. Typecheck/lint/43 tests/`next build` all green. Cloud Run `STRIPE_*` vars to be dropped in the next redeploy (old image still requires them at boot).
+- **2026-07-15** — N3.2 + N3.3 complete: Cloud Run service `bcc-rentals` deployed to `us-east1` from source (live at `bcc-rentals-558348229437.us-east1.run.app`, `/` → 200); all `lib/env.ts` vars set as service config. **Reprioritized to demo-first:** added **Block D** (demo state gate — Stripe removal, PayPal/card payment, customer+staff emails, approved navigable UI, admin outline). **Moved** custom-domain mapping (was N3.4) and Secret Manager hardening (split out of N3.3) into the new post-demo **Block G** — `rentals.bachmancc.org` is not mapped until the demo is approved.
 - **2026-07-14** — N3.1 complete: repo containerized (`output: 'standalone'` + multi-stage `Dockerfile` + `.dockerignore`); `SKIP_ENV_VALIDATION` added to `lib/env.ts` for secret-free builds. Standalone server verified booting on 8080 (storefront/ICS/availability all 200). Added `docs/DEPLOY_CLOUD_RUN.md` runbook for the user-run infra steps N3.2–N3.5.

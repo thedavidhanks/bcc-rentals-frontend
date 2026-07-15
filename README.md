@@ -5,7 +5,7 @@ A Next.js storefront for the Bachman Community Center that lets the public reser
 ## Architecture at a glance
 
 - **Next.js 16 App Router + TypeScript** — server actions and route handlers keep all secrets server-side.
-- **Stripe Checkout** for cards and **PayPal Smart Buttons** for PayPal/Venmo.
+- **PayPal Smart Buttons** are the sole payment method — PayPal, Venmo, and guest credit-card checkout (nonprofit rate).
 - **Neon Postgres** is the durable system of record: the product catalog (`items` + `item_prices`) and `reservations`. The scheduler (`lib/scheduler`) books race-safely with a per-item advisory lock.
 - **Upstash Redis** holds only ephemeral state — pending orders during payment (1h TTL), fulfill locks, and webhook dedup keys. Losing it never corrupts a business record.
 - **Resend** sends both the customer confirmation and a staff notification (to `STAFF_NOTIFICATION_EMAIL`) on each booking.
@@ -103,8 +103,6 @@ Copy `.env.local.example` to `.env.local`. All vars are validated at boot via `l
 | Var | Purpose |
 | --- | --- |
 | `NEXT_PUBLIC_SITE_URL` | Public site URL — used in payment redirects. |
-| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe server keys. |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe client key. |
 | `PAYPAL_ENV` | `sandbox` or `live`. |
 | `PAYPAL_CLIENT_ID` / `_CLIENT_SECRET` / `_WEBHOOK_ID` | PayPal server config. |
 | `NEXT_PUBLIC_PAYPAL_CLIENT_ID` | PayPal client SDK config. |
@@ -117,23 +115,17 @@ Copy `.env.local.example` to `.env.local`. All vars are validated at boot via `l
 
 ## Local end-to-end testing
 
-1. **Stripe webhooks**: in another terminal,
-   ```bash
-   stripe listen --forward-to localhost:3000/api/webhooks/stripe
-   ```
-   Copy the printed `whsec_...` into `STRIPE_WEBHOOK_SECRET`. Use card `4242 4242 4242 4242`.
-2. **PayPal sandbox**: create sandbox business + buyer accounts in the PayPal developer dashboard, set `PAYPAL_ENV=sandbox`. Expose `localhost:3000` with a **reserved** ngrok domain so the webhook URL survives restarts: sign up at https://ngrok.com → **Domains** → reserve a free `*.ngrok-free.dev` subdomain, then run
+1. **PayPal sandbox**: create sandbox business + buyer accounts in the PayPal developer dashboard, set `PAYPAL_ENV=sandbox`. Sandbox card payments use PayPal's guest card fields (no separate card processor). Expose `localhost:3000` with a **reserved** ngrok domain so the webhook URL survives restarts: sign up at https://ngrok.com → **Domains** → reserve a free `*.ngrok-free.dev` subdomain, then run
    ```bash
    ngrok http --url=<your-reserved>.ngrok-free.dev 3000
    # example: ngrok http --url=devoutly-edging-marigold.ngrok-free.dev 3000
    ```
    Register `https://<your-reserved>.ngrok-free.dev/api/webhooks/paypal` in your PayPal app's webhook settings and copy the resulting webhook ID into `PAYPAL_WEBHOOK_ID`.
-3. **Database**: point `DATABASE_URL`/`DATABASE_URL_DEV` at your Neon branches and run the `db:apply` + `db:seed` scripts (see prerequisites). Bookings are written to the `reservations` table.
+2. **Database**: point `DATABASE_URL`/`DATABASE_URL_DEV` at your Neon branches and run the `db:apply` + `db:seed` scripts (see prerequisites). Bookings are written to the `reservations` table.
 
 ### Smoke checklist
 - Picking a date shows availability that respects existing reservations (`/api/availability`).
-- Stripe payment → webhook fires → reservation row written to Neon → confirmation + staff emails arrive → success page renders.
-- PayPal sandbox path equivalent.
+- PayPal payment (PayPal / Venmo / guest card) → webhook fires → reservation row written to Neon → confirmation + staff emails arrive → success page renders.
 - Two browsers attempting the same slot → second one gets a clean error and an automatic refund.
 - `/api/calendar/[itemSlug]` returns a valid ICS feed of the item's booked windows.
 
@@ -157,7 +149,7 @@ The app is containerized (`output: 'standalone'`) and deployed to Cloud Run — 
 - Deploy the container to a Cloud Run service (min-instances 0) in a region near the Neon/Upstash `us-east-1` data (e.g. `us-east1`).
 - Set every env var (above) as Cloud Run service config; keep secrets in Secret Manager.
 - Custom domain: `rentals.bachmancc.org` via Cloud Run domain mapping.
-- Register production webhook URLs in the Stripe + PayPal dashboards against the Cloud Run HTTPS URL.
+- Register the production webhook URL in the PayPal dashboard against the Cloud Run HTTPS URL.
 
 ## Adding a new rental product
 
@@ -175,9 +167,7 @@ app/
   api/
     availability/                 GET availability for a product
     calendar/[itemSlug]/          GET ICS feed of an item's booked windows
-    checkout/stripe/              POST → Stripe Checkout Session
     checkout/paypal/              POST create-order, POST capture-order
-    webhooks/stripe/              Stripe webhook (signature verified)
     webhooks/paypal/              PayPal webhook (signature verified)
   rentals/[slug]/                 Product detail + BookingWidget
   rentals/confirmation/[orderId]/ Success page
@@ -189,7 +179,7 @@ lib/
   scheduler/                      Neon-backed reservations (client, db, policy, types, errors)
   products/                       DB-backed catalog repository + pricing logic
   orders/                         pending order store + preflight + idempotent fulfill
-  payments/                       stripe, paypal, refund helper
+  payments/                       paypal, refund helper
   email/                          Resend + confirmation template
 components/ui/                    shadcn-style primitives
 ```

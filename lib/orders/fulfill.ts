@@ -9,7 +9,7 @@ import { acquireFulfillLock, getOrder, updateOrder, type Order } from "./store";
 
 export type FulfillInput = {
   orderId: string;
-  paymentProvider: "stripe" | "paypal";
+  paymentProvider: "paypal";
   paymentRef: string;
 };
 

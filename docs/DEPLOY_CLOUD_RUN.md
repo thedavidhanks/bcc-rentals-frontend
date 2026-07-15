@@ -67,8 +67,7 @@ into **secrets** (Secret Manager) and **plain config** (`--set-env-vars`).
 
 ```bash
 # Create secrets (repeat per secret; --data-file=- reads stdin)
-for s in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_SECRET \
-         RESEND_API_KEY UPSTASH_REDIS_REST_TOKEN DATABASE_URL; do
+for s in PAYPAL_CLIENT_SECRET RESEND_API_KEY UPSTASH_REDIS_REST_TOKEN DATABASE_URL; do
   printf '%s' "REPLACE_ME" | gcloud secrets create "$s" --data-file=- 2>/dev/null \
     || printf '%s' "REPLACE_ME" | gcloud secrets versions add "$s" --data-file=-
 done
@@ -76,17 +75,14 @@ done
 # Grant the Cloud Run runtime service account access
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
 SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-for s in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET PAYPAL_CLIENT_SECRET \
-         RESEND_API_KEY UPSTASH_REDIS_REST_TOKEN DATABASE_URL; do
+for s in PAYPAL_CLIENT_SECRET RESEND_API_KEY UPSTASH_REDIS_REST_TOKEN DATABASE_URL; do
   gcloud secrets add-iam-policy-binding "$s" \
     --member="serviceAccount:${SA}" --role=roles/secretmanager.secretAccessor
 done
 
 # Wire secrets + plain config onto the service
 gcloud run services update "$SERVICE" --region "$REGION" \
-  --set-secrets "STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,\
-STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,\
-PAYPAL_CLIENT_SECRET=PAYPAL_CLIENT_SECRET:latest,\
+  --set-secrets "PAYPAL_CLIENT_SECRET=PAYPAL_CLIENT_SECRET:latest,\
 RESEND_API_KEY=RESEND_API_KEY:latest,\
 UPSTASH_REDIS_REST_TOKEN=UPSTASH_REDIS_REST_TOKEN:latest,\
 DATABASE_URL=DATABASE_URL:latest" \
@@ -96,7 +92,6 @@ PAYPAL_ENV=live,\
 PAYPAL_CLIENT_ID=YOUR_LIVE_PAYPAL_CLIENT_ID,\
 PAYPAL_WEBHOOK_ID=SET_AFTER_N3.5,\
 NEXT_PUBLIC_PAYPAL_CLIENT_ID=YOUR_LIVE_PAYPAL_CLIENT_ID,\
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_or_placeholder,\
 EMAIL_FROM=BCC Rentals <rentals@bachmancc.org>,\
 STAFF_NOTIFICATION_EMAIL=reservations@bachmancc.org,\
 UPSTASH_REDIS_REST_URL=https://your-db.upstash.io"
@@ -106,9 +101,8 @@ Notes:
 - `NEXT_PUBLIC_PAYPAL_CLIENT_ID` appears in **both** the build arg (N3.2) and the
   runtime env — the build value is what the browser actually ships; the runtime
   copy just satisfies `lib/env.ts` at boot. Keep them identical.
-- `STRIPE_*` are still required by `lib/env.ts` (Stripe removal is a later task).
-  Use real live keys if Stripe is active, otherwise valid-format placeholders
-  (`sk_...`, `whsec_...`, `pk_...`) so boot validation passes.
+- Stripe has been removed (Block D / D1) — no `STRIPE_*` vars are needed. PayPal
+  handles cards via guest checkout.
 - `DATABASE_URL` must be Neon's **pooled** `main`-branch endpoint.
 
 ---

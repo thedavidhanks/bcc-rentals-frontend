@@ -27,8 +27,7 @@ export class PreflightError extends Error {
 
 /**
  * Re-quotes price server-side, re-checks availability, and creates a pending
- * order in Redis. Called from both /api/checkout/stripe and the PayPal create-order
- * endpoint.
+ * order in Redis. Called from the PayPal create-order endpoint.
  */
 export async function preflightCheckout(input: CheckoutInput): Promise<Preflight> {
   const product = await getProduct(input.slug);

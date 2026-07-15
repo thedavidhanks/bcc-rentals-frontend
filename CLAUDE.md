@@ -26,7 +26,7 @@ Next.js 16 App Router + TypeScript. Two data stores, split by durability (see [d
 - **Neon Postgres** — *durable* system of record: the product catalog (`items` + `item_prices`) and, once the migration below completes, `reservations`. Accessed via `pg` (`Pool` + `withTransaction` in [lib/scheduler/db.ts](lib/scheduler/db.ts)). Connection strings are `DATABASE_URL` (prod/`main` branch) and `DATABASE_URL_DEV` (`dev` branch).
 - **Upstash Redis** — *ephemeral* state only ([lib/redis.ts](lib/redis.ts)): pending orders (1h TTL), fulfill locks, webhook dedup keys, and the LibreBooking session token. Every key is short-lived and self-expiring; losing it never corrupts a business record. It is **not** a system of record.
 
-> **Migration in progress (Plan B).** The end state removes LibreBooking entirely and makes Neon the system of record for reservations. **Block 1 is done**: [lib/scheduler/](lib/scheduler/) is built and tested, and the product catalog already lives in Postgres. **Block 2 is not yet done**: the order flow ([lib/orders/preflight.ts](lib/orders/preflight.ts), [lib/orders/fulfill.ts](lib/orders/fulfill.ts), [app/api/availability/route.ts](app/api/availability/route.ts)) still imports `lib/librebooking` and books against LibreBooking. When editing the reservation flow, know that `lib/scheduler` is the intended replacement but `lib/librebooking` is still live. Similarly, Stripe has been dropped from the plan (PayPal, at the nonprofit rate, is the target sole processor) but Stripe code still exists in the repo pending removal.
+> **Migration status (Plan B).** LibreBooking has been **removed** — Neon is the system of record for reservations, and the order flow ([lib/orders/preflight.ts](lib/orders/preflight.ts), [lib/orders/fulfill.ts](lib/orders/fulfill.ts), [app/api/availability/route.ts](app/api/availability/route.ts)) books against `lib/scheduler`. **Stripe has also been removed** (Block D / D1): PayPal — at the nonprofit rate, covering PayPal/Venmo/guest credit-card — is the sole payment processor. No `lib/librebooking` or Stripe code remains.
 
 ### Product catalog in Postgres ([lib/products/repository.ts](lib/products/repository.ts))
 
@@ -50,9 +50,9 @@ The Neon-backed reservation layer that replaces LibreBooking. `scheduler` expose
 
 Reservations are NEVER written to the booking system until payment succeeds. The flow:
 
-1. **Preflight** ([lib/orders/preflight.ts](lib/orders/preflight.ts)) — re-quotes price server-side, re-checks availability, creates a `pending` order in Redis (1h TTL). Called by both Stripe checkout creation and PayPal create-order.
-2. **Payment** — PayPal Smart Buttons (Stripe Checkout still present pending removal).
-3. **Fulfill** ([lib/orders/fulfill.ts](lib/orders/fulfill.ts)) — create the reservation → mark order `confirmed` → send Resend confirmation email. On a conflict, automatically refund and mark `refunded-conflict`. (Today this calls `findOrCreateUser` + `createReservation` in LibreBooking and catches `LibreBookingConflictError`; Block 2 drops `findOrCreateUser` and swaps to `scheduler.createReservation` + `SchedulerConflictError`.)
+1. **Preflight** ([lib/orders/preflight.ts](lib/orders/preflight.ts)) — re-quotes price server-side, re-checks availability, creates a `pending` order in Redis (1h TTL). Called by the PayPal create-order endpoint.
+2. **Payment** — PayPal Smart Buttons (PayPal / Venmo / guest credit-card).
+3. **Fulfill** ([lib/orders/fulfill.ts](lib/orders/fulfill.ts)) — `scheduler.createReservation` → mark order `confirmed` → send Resend confirmation + staff notification emails. On a `SchedulerConflictError`, automatically refund and mark `refunded-conflict`.
 
 The conflict guard is unchanged by the migration: the Redis fulfill lock plus a re-check inside the booking transaction. Postgres alone can't enforce no-overlap as a constraint, so this lock + read-then-write pattern is load-bearing.
 
@@ -60,7 +60,7 @@ Fulfill is **idempotent and concurrency-safe**: it can be called from both the w
 
 ### Webhook idempotency
 
-Every webhook event ID is recorded with `recordWebhookEvent` (Redis `SET NX`, 24h TTL) before processing. Duplicate deliveries from Stripe/PayPal short-circuit. Stripe webhook signature is verified with `STRIPE_WEBHOOK_SECRET`; PayPal with `PAYPAL_WEBHOOK_ID`.
+Every webhook event ID is recorded with `recordWebhookEvent` (Redis `SET NX`, 24h TTL) before processing. Duplicate deliveries from PayPal short-circuit. The PayPal webhook signature is verified with `PAYPAL_WEBHOOK_ID`.
 
 ### LibreBooking client ([lib/librebooking/client.ts](lib/librebooking/client.ts))
 
@@ -84,4 +84,4 @@ Products live in Postgres, so adding one is **data, not code** — no new pages,
 
 ### Server-only boundary
 
-Files that touch secrets, Redis, Neon/Postgres (`lib/scheduler/*`, `lib/products/repository.ts`), LibreBooking, Stripe, PayPal, or Resend import `"server-only"` at the top — this throws at build time if accidentally pulled into a client component. Preserve this when adding new server modules. The only client-exposed env vars are the `NEXT_PUBLIC_*` ones.
+Files that touch secrets, Redis, Neon/Postgres (`lib/scheduler/*`, `lib/products/repository.ts`), PayPal, or Resend import `"server-only"` at the top — this throws at build time if accidentally pulled into a client component. Preserve this when adding new server modules. The only client-exposed env vars are the `NEXT_PUBLIC_*` ones.

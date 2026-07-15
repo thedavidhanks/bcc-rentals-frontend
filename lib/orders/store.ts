@@ -18,7 +18,7 @@ export const orderSchema = z.object({
   endISO: z.string(),
   totalCents: z.number().int().nonnegative(),
   customer: customerSchema,
-  paymentProvider: z.enum(["stripe", "paypal"]).nullable(),
+  paymentProvider: z.enum(["paypal"]).nullable(),
   paymentRef: z.string().nullable(),
   reservationRef: z.string().nullable(),
   createdAt: z.number().int(),
@@ -83,7 +83,7 @@ export async function acquireFulfillLock(id: string): Promise<boolean> {
   return result === "OK";
 }
 
-export async function recordWebhookEvent(provider: "stripe" | "paypal", eventId: string): Promise<boolean> {
+export async function recordWebhookEvent(provider: "paypal", eventId: string): Promise<boolean> {
   const result = await redis.set(`webhook:${provider}:${eventId}`, "1", {
     nx: true,
     ex: 60 * 60 * 24,
