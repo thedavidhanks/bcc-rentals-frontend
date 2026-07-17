@@ -10,6 +10,7 @@
 
 # testing
 /coverage
+/docs/debug_logs
 
 # next.js
 /.next/

@@ -216,7 +216,8 @@ export function BookingWidget({ product }: { product: Product }) {
                 currency: "USD",
                 intent: "capture",
                 components: "buttons,funding-eligibility",
-                "enable-funding": "venmo,paylater,card",
+                "enable-funding": "venmo,card",
+                "disable-funding": "paylater",
               }}
             >
               <PayPalButtons

@@ -19,8 +19,11 @@ export async function POST(request: Request) {
 
   try {
     const captured = await capturePaypalOrder(parsed.data.paypalOrderId);
-    const orderId = captured.purchase_units?.[0]?.custom_id;
-    const captureId = captured.purchase_units?.[0]?.payments?.captures?.[0]?.id;
+    const capture = captured.purchase_units?.[0]?.payments?.captures?.[0];
+    // In a capture response PayPal echoes custom_id on the capture object; the
+    // purchase-unit-level custom_id is a fallback for other response shapes.
+    const orderId = capture?.custom_id ?? captured.purchase_units?.[0]?.custom_id;
+    const captureId = capture?.id;
     if (!orderId || !captureId) {
       logger.error({ captured }, "paypal capture missing custom_id or capture id");
       return NextResponse.json({ error: "Malformed PayPal response" }, { status: 502 });

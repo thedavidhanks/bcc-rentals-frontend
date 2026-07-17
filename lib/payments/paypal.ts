@@ -88,7 +88,7 @@ export type CapturedOrder = {
   status: string;
   purchase_units: Array<{
     custom_id?: string;
-    payments?: { captures?: Array<{ id: string; status: string }> };
+    payments?: { captures?: Array<{ id: string; status: string; custom_id?: string }> };
   }>;
 };
 
