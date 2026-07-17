@@ -71,7 +71,10 @@ export function quote(product: Product, startISO: string, endISO: string): Quote
   const unitCents = resolveRate(product, startISO);
 
   if (product.pricing.kind === "flat-per-day") {
-    const days = Math.max(1, differenceInCalendarDays(end, start) + 1);
+    // Half-open interval [start, end): end is the day-start *after* the last
+    // booked day (app-wide convention, see lib/scheduler/client.ts), so the day
+    // count is the plain calendar-day difference — no +1.
+    const days = Math.max(1, differenceInCalendarDays(end, start));
     if (days < product.pricing.minDays) {
       throw new PricingError(`Minimum ${product.pricing.minDays} day(s)`);
     }

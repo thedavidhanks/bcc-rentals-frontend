@@ -40,10 +40,16 @@ const hourProduct = makeProduct({
 });
 
 describe("quote", () => {
-  it("charges per calendar day inclusive of the end day", () => {
+  it("charges per calendar day for a half-open [start, end) interval", () => {
     const q = quote(dayProduct, "2026-05-01T00:00:00Z", "2026-05-03T00:00:00Z");
-    expect(q.units).toBe(3);
-    expect(q.totalCents).toBe(45000);
+    expect(q.units).toBe(2);
+    expect(q.totalCents).toBe(30000);
+  });
+
+  it("charges one day for a single-day selection", () => {
+    const q = quote(dayProduct, "2026-05-01T00:00:00Z", "2026-05-02T00:00:00Z");
+    expect(q.units).toBe(1);
+    expect(q.totalCents).toBe(15000);
   });
 
   it("charges hourly within constraints", () => {
