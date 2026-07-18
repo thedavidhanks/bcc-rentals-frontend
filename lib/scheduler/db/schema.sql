@@ -101,3 +101,33 @@ CREATE TABLE IF NOT EXISTS reservations (
 CREATE INDEX IF NOT EXISTS reservations_item_time_idx
   ON reservations (item_id, start_at, end_at)
   WHERE status <> 'cancelled';
+
+-- Browse categories. Distinct from items.type (unique/fungible inventory model):
+-- categories are how customers browse the storefront, and a product can belong to
+-- more than one (many-to-many via item_categories).
+CREATE TABLE IF NOT EXISTS categories (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug       text UNIQUE NOT NULL,
+  name       text NOT NULL,
+  sort_order int  NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS item_categories (
+  item_id     uuid NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  category_id uuid NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  PRIMARY KEY (item_id, category_id)
+);
+
+CREATE INDEX IF NOT EXISTS item_categories_category_idx ON item_categories (category_id);
+
+-- Seed the browse categories so they always exist (idempotent).
+INSERT INTO categories (slug, name, sort_order) VALUES
+  ('room',         'Room',         1),
+  ('tool',         'Tool',         2),
+  ('accessory',    'Accessory',    3),
+  ('event-add-on', 'Event Add-on', 4),
+  ('furniture',    'Furniture',    5),
+  ('equipment',    'Equipment',    6),
+  ('decor',        'Decor',        7)
+ON CONFLICT (slug) DO NOTHING;

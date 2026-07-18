@@ -1,12 +1,10 @@
-import Link from "next/link";
-import { listProducts } from "@/lib/products/repository";
-import { formatCents } from "@/lib/products/pricing";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { listProducts, listCategories } from "@/lib/products/repository";
+import { CatalogBrowser } from "@/components/CatalogBrowser";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const products = await listProducts();
+  const [products, categories] = await Promise.all([listProducts(), listCategories()]);
   return (
     <div className="space-y-8">
       <section className="space-y-2">
@@ -16,31 +14,7 @@ export default async function Home() {
         </p>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        {products.map((product) => (
-          <Link key={product.slug} href={`/rentals/${product.slug}`}>
-            <Card className="h-full transition-shadow hover:shadow-md">
-              <CardHeader>
-                <CardTitle>{product.name}</CardTitle>
-                <CardDescription>{product.shortDescription}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-sm font-medium">
-                  {formatCents(product.pricing.cents)}{" "}
-                  <span className="text-muted-foreground">
-                    / {product.unit === "full-day" ? "day" : "hour"}
-                  </span>
-                </div>
-                <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
-                  {product.highlights.map((h) => (
-                    <li key={h}>· {h}</li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-      </section>
+      <CatalogBrowser products={products} categories={categories} />
     </div>
   );
 }

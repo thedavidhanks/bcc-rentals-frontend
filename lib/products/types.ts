@@ -20,6 +20,10 @@ export type FlatPerHourPricing = {
  * `endMinute === null` means all hours. Minutes are since local midnight in the
  * BCC timezone. Higher `priority` wins when several rules match a booking.
  */
+/** A browse category a product belongs to. Distinct from the `type` inventory
+ * model (unique/fungible); products are grouped into these on the storefront. */
+export type ProductCategory = { slug: string; name: string };
+
 export type PriceRule = {
   priceCents: number;
   daysOfWeek: number[] | null; // 0=Sun .. 6=Sat
@@ -48,6 +52,8 @@ export type Product = {
   pricing: FlatPerDayPricing | FlatPerHourPricing;
   /** All price rules for this item, for future variable pricing + admin editing. */
   prices: PriceRule[];
+  /** Browse categories this product belongs to (many-to-many); `[]` if none. */
+  categories: ProductCategory[];
   bookingWindow: { minLeadHours: number; maxAdvanceDays: number };
   hourlyConstraints?: { openHour: number; closeHour: number; slotMinutes: number };
   bufferMinutes: number;
