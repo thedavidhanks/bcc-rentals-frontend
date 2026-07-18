@@ -24,6 +24,7 @@ function makeProduct(overrides: Partial<Product>): Product {
     unit: "full-day",
     pricing: { kind: "flat-per-day", cents: 15000, minDays: 1 },
     prices: [flat(15000)],
+    categories: [],
     bookingWindow: { minLeadHours: 0, maxAdvanceDays: 365 },
     bufferMinutes: 0,
     ...overrides,

@@ -36,6 +36,12 @@ type PriceRow = {
   label: string | null;
 };
 
+type CategoryRow = {
+  item_slug: string;
+  slug: string;
+  name: string;
+};
+
 function makeItem(overrides: Partial<ItemRow> = {}): ItemRow {
   return {
     slug: "tent",
@@ -70,6 +76,15 @@ function makePrice(overrides: Partial<PriceRow> = {}): PriceRow {
   };
 }
 
+function makeCategory(overrides: Partial<CategoryRow> = {}): CategoryRow {
+  return {
+    item_slug: "tent",
+    slug: "event-add-on",
+    name: "Event add-on",
+    ...overrides,
+  };
+}
+
 const rows = <T>(...r: T[]) => ({ rows: r });
 
 // The repository caches per-module-instance for 30s; reset the registry each test
@@ -87,7 +102,8 @@ describe("listProducts", () => {
   it("maps a full-day item + flat price into a Product", async () => {
     poolQuery
       .mockResolvedValueOnce(rows(makeItem())) // items
-      .mockResolvedValueOnce(rows(makePrice())); // item_prices
+      .mockResolvedValueOnce(rows(makePrice())) // item_prices
+      .mockResolvedValueOnce(rows()); // item_categories
 
     const { listProducts } = await loadRepo();
     const [p] = await listProducts();
@@ -108,6 +124,53 @@ describe("listProducts", () => {
     });
     expect(p.hourlyConstraints).toBeUndefined();
     expect(p.prices).toHaveLength(1);
+    expect(p.categories).toEqual([]);
+  });
+
+  it("populates categories in sort order for a multi-category product", async () => {
+    poolQuery
+      .mockResolvedValueOnce(rows(makeItem()))
+      .mockResolvedValueOnce(rows(makePrice()))
+      // Rows arrive already ordered by the SQL `ORDER BY c.sort_order, c.name`;
+      // the mapper must preserve that order.
+      .mockResolvedValueOnce(
+        rows(
+          makeCategory({ slug: "event-add-on", name: "Event add-on" }),
+          makeCategory({ slug: "accessory", name: "Accessory" }),
+        ),
+      );
+
+    const { listProducts } = await loadRepo();
+    const [p] = await listProducts();
+
+    expect(p.categories).toEqual([
+      { slug: "event-add-on", name: "Event add-on" },
+      { slug: "accessory", name: "Accessory" },
+    ]);
+  });
+
+  it("groups category rows onto the correct product and defaults to [] for the rest", async () => {
+    poolQuery
+      .mockResolvedValueOnce(
+        rows(
+          makeItem({ slug: "tent", name: "Tent" }),
+          makeItem({ slug: "power-drill", name: "Power Drill" }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        rows(makePrice({ item_slug: "tent" }), makePrice({ item_slug: "power-drill" })),
+      )
+      .mockResolvedValueOnce(
+        rows(makeCategory({ item_slug: "tent", slug: "event-add-on", name: "Event add-on" })),
+      );
+
+    const { listProducts } = await loadRepo();
+    const products = await listProducts();
+    const tent = products.find((p) => p.slug === "tent");
+    const drill = products.find((p) => p.slug === "power-drill");
+
+    expect(tent?.categories).toEqual([{ slug: "event-add-on", name: "Event add-on" }]);
+    expect(drill?.categories).toEqual([]);
   });
 
   it("maps an hourly item with available_hours into hourlyConstraints", async () => {
@@ -124,7 +187,8 @@ describe("listProducts", () => {
           }),
         ),
       )
-      .mockResolvedValueOnce(rows(makePrice({ item_slug: "party-room", price_cents: 4000 })));
+      .mockResolvedValueOnce(rows(makePrice({ item_slug: "party-room", price_cents: 4000 })))
+      .mockResolvedValueOnce(rows());
 
     const { listProducts } = await loadRepo();
     const [p] = await listProducts();
@@ -137,7 +201,8 @@ describe("listProducts", () => {
   it("yields cents: 0 when an item has no price rows", async () => {
     poolQuery
       .mockResolvedValueOnce(rows(makeItem()))
-      .mockResolvedValueOnce(rows()); // no prices
+      .mockResolvedValueOnce(rows()) // no prices
+      .mockResolvedValueOnce(rows()); // no categories
 
     const { listProducts } = await loadRepo();
     const [p] = await listProducts();
@@ -153,6 +218,7 @@ describe("listProducts", () => {
         makePrice({ price_cents: 9999, priority: 100, days_of_week: [6], start_minute: 600 }), // scoped: ignored for base
       ),
     );
+    poolQuery.mockResolvedValueOnce(rows()); // no categories
 
     const { listProducts } = await loadRepo();
     const [p] = await listProducts();
@@ -162,14 +228,15 @@ describe("listProducts", () => {
   it("caches results and does not re-query on a second call", async () => {
     poolQuery
       .mockResolvedValueOnce(rows(makeItem()))
-      .mockResolvedValueOnce(rows(makePrice()));
+      .mockResolvedValueOnce(rows(makePrice()))
+      .mockResolvedValueOnce(rows());
 
     const { listProducts } = await loadRepo();
     const first = await listProducts();
     const second = await listProducts();
 
     expect(second).toBe(first); // same cached array reference
-    expect(poolQuery).toHaveBeenCalledTimes(2); // items + prices, once
+    expect(poolQuery).toHaveBeenCalledTimes(3); // items + prices + categories, once
   });
 });
 
@@ -177,11 +244,13 @@ describe("getProduct", () => {
   it("returns the mapped product for a known slug", async () => {
     poolQuery
       .mockResolvedValueOnce(rows(makeItem()))
-      .mockResolvedValueOnce(rows(makePrice()));
+      .mockResolvedValueOnce(rows(makePrice()))
+      .mockResolvedValueOnce(rows(makeCategory({ slug: "event-add-on", name: "Event add-on" })));
 
     const { getProduct } = await loadRepo();
     const p = await getProduct("tent");
     expect(p).toMatchObject({ slug: "tent", pricing: { cents: 15000 } });
+    expect(p?.categories).toEqual([{ slug: "event-add-on", name: "Event add-on" }]);
   });
 
   it("returns undefined for an unknown/inactive slug", async () => {
@@ -194,13 +263,53 @@ describe("getProduct", () => {
   it("serves from the warm list cache without querying again", async () => {
     poolQuery
       .mockResolvedValueOnce(rows(makeItem()))
-      .mockResolvedValueOnce(rows(makePrice()));
+      .mockResolvedValueOnce(rows(makePrice()))
+      .mockResolvedValueOnce(rows());
 
     const repo = await loadRepo();
-    await repo.listProducts(); // warms the cache (2 queries)
+    await repo.listProducts(); // warms the cache (3 queries)
     const p = await repo.getProduct("tent");
 
     expect(p).toMatchObject({ slug: "tent" });
-    expect(poolQuery).toHaveBeenCalledTimes(2); // no extra query for getProduct
+    expect(poolQuery).toHaveBeenCalledTimes(3); // no extra query for getProduct
+  });
+});
+
+describe("listCategories", () => {
+  it("maps category rows to { slug, name } in query order", async () => {
+    poolQuery.mockResolvedValueOnce(
+      rows(
+        { slug: "room", name: "Room" },
+        { slug: "tool", name: "Tool" },
+        { slug: "event-add-on", name: "Event add-on" },
+      ),
+    );
+
+    const { listCategories } = await loadRepo();
+    const categories = await listCategories();
+
+    expect(categories).toEqual([
+      { slug: "room", name: "Room" },
+      { slug: "tool", name: "Tool" },
+      { slug: "event-add-on", name: "Event add-on" },
+    ]);
+  });
+
+  it("returns [] when there are no categories", async () => {
+    poolQuery.mockResolvedValueOnce(rows());
+
+    const { listCategories } = await loadRepo();
+    expect(await listCategories()).toEqual([]);
+  });
+
+  it("caches results and does not re-query on a second call", async () => {
+    poolQuery.mockResolvedValueOnce(rows({ slug: "room", name: "Room" }));
+
+    const { listCategories } = await loadRepo();
+    const first = await listCategories();
+    const second = await listCategories();
+
+    expect(second).toBe(first);
+    expect(poolQuery).toHaveBeenCalledTimes(1);
   });
 });
