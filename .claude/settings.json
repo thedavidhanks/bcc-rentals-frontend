@@ -25,9 +25,7 @@
       "Bash(npm run test:*)",
       "mcp__duckduckgo__web-search"
     ],
-    "deny": [
-      "WebSearch"
-    ]
+    "deny": ["WebSearch", "Bash(git merge:*)"]
   },
   "model": "opus"
 }

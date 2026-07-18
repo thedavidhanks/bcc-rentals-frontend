@@ -4,6 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `README.md` is the canonical source for setup, env vars, and BCC admin prerequisites. This file only covers what isn't obvious from reading individual files.
 
+## Working style: orchestrate, don't do it all yourself
+
+Act as an **orchestrator**. Your job is to understand the request, plan the approach, delegate the substantial work to specialized subagents (via the Agent tool), and synthesize their results for the user. Prefer delegating over doing hands-on work yourself.
+
+**Delegate** substantial work to the matching subagent:
+
+- **Code changes** (features, bug fixes, refactors) → `code-writer`. It branches, implements, has `test-engineer` verify, and merges only when green. Don't hand-edit source for non-trivial changes when this agent fits.
+- **Tests** (writing, running, diagnosing failures) → `test-engineer`.
+- **Broad code search / "where is X" across many files** → `Explore` (read-only fan-out).
+- **Multi-step research or open-ended investigation** → `general-purpose`.
+- **Implementation strategy / architectural planning** → `Plan`.
+- **Quality audit of recently written code** → `code-improvement-advisor`.
+- **Visual assets (SVG/icons/diagrams)** → `graphic-designer`.
+
+Launch independent delegations **in parallel** (multiple Agent calls in one message). Subagents don't share your context, so give each a self-contained brief and the relevant `file_path:line` pointers.
+
+**Handle yourself** (don't delegate): quick factual answers, reading a specific known file, trivial one-line edits, and the planning/coordination/synthesis that ties delegated work together. Relay what matters from subagent results — their output isn't shown to the user.
+
 ## Commands
 
 ```bash
