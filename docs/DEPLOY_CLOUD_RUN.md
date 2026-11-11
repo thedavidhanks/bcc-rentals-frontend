@@ -62,48 +62,50 @@ Use it for the initial smoke test before the custom domain is live.
 
 ## N3.3 — Env vars & secrets
 
-[`lib/env.ts`](../lib/env.ts) is the source of truth for the full var list. Split
-into **secrets** (Secret Manager) and **plain config** (`--set-env-vars`).
+[`lib/env.ts`](../lib/env.ts) is the source of truth for the full var list, split
+into **secrets** (Secret Manager) and **plain config** (`--set-env-vars`). The
+helper script [`scripts/deploy/set-staging-env.sh`](../scripts/deploy/set-staging-env.sh)
+performs the entire step — run it instead of assembling the commands by hand:
 
 ```bash
-# Create secrets (repeat per secret; --data-file=- reads stdin)
-for s in PAYPAL_CLIENT_SECRET RESEND_API_KEY UPSTASH_REDIS_REST_TOKEN DATABASE_URL; do
-  printf '%s' "REPLACE_ME" | gcloud secrets create "$s" --data-file=- 2>/dev/null \
-    || printf '%s' "REPLACE_ME" | gcloud secrets versions add "$s" --data-file=-
-done
-
-# Grant the Cloud Run runtime service account access
-PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
-SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-for s in PAYPAL_CLIENT_SECRET RESEND_API_KEY UPSTASH_REDIS_REST_TOKEN DATABASE_URL; do
-  gcloud secrets add-iam-policy-binding "$s" \
-    --member="serviceAccount:${SA}" --role=roles/secretmanager.secretAccessor
-done
-
-# Wire secrets + plain config onto the service
-gcloud run services update "$SERVICE" --region "$REGION" \
-  --set-secrets "PAYPAL_CLIENT_SECRET=PAYPAL_CLIENT_SECRET:latest,\
-RESEND_API_KEY=RESEND_API_KEY:latest,\
-UPSTASH_REDIS_REST_TOKEN=UPSTASH_REDIS_REST_TOKEN:latest,\
-DATABASE_URL=DATABASE_URL:latest" \
-  --set-env-vars "NODE_ENV=production,\
-NEXT_PUBLIC_SITE_URL=https://rentals.bachmancc.org,\
-PAYPAL_ENV=live,\
-PAYPAL_CLIENT_ID=YOUR_LIVE_PAYPAL_CLIENT_ID,\
-PAYPAL_WEBHOOK_ID=SET_AFTER_N3.5,\
-NEXT_PUBLIC_PAYPAL_CLIENT_ID=YOUR_LIVE_PAYPAL_CLIENT_ID,\
-EMAIL_FROM=BCC Rentals <rentals@bachmancc.org>,\
-STAFF_NOTIFICATION_EMAIL=reservations@bachmancc.org,\
-UPSTASH_REDIS_REST_URL=https://your-db.upstash.io"
+# Run from the repo root, authenticated as yourself (see `gcloud auth login` above).
+bash scripts/deploy/set-staging-env.sh
 ```
+
+**What it does**, in one idempotent pass: (1) upserts the four secrets
+(`PAYPAL_CLIENT_SECRET`, `RESEND_API_KEY`, `UPSTASH_REDIS_REST_TOKEN`,
+`DATABASE_URL`) into Secret Manager, (2) grants the Cloud Run runtime service
+account `secretmanager.secretAccessor` on each, and (3) updates the service with
+`--set-secrets` plus the non-secret `--set-env-vars`.
+
+**Why the script rather than raw `gcloud`:** it reads each value straight from
+your local `.env.local` and pipes it into `gcloud` over stdin, so **no secret is
+ever printed, pasted into a command, or written to shell history**. Being
+idempotent, it's also safe to re-run after any `.env.local` edit.
+
+**When to run it:** immediately after the N3.2 deploy, and any time the service is
+missing or has stale env vars. The tell-tale symptom is the service returning
+**HTTP 500 on every route** — that means `lib/env.ts` failed its boot-time Zod
+validation because a required var is unset. Env vars do **not** carry across GCP
+projects, so a newly created project/service always needs this step.
+
+The script is preset for the **staging** target (project `bcc-storefront-staging`,
+service `bcc-rentals`, the run.app `SITE_URL`). For a different project — or for
+**production** — edit the config block at the top of the script: set `SITE_URL` to
+the custom domain and change `PAYPAL_ENV` to `live` in `.env.local` (the script
+sources it from there).
 
 Notes:
 - `NEXT_PUBLIC_PAYPAL_CLIENT_ID` appears in **both** the build arg (N3.2) and the
   runtime env — the build value is what the browser actually ships; the runtime
-  copy just satisfies `lib/env.ts` at boot. Keep them identical.
+  copy just satisfies `lib/env.ts` at boot. Keep them identical, and note the
+  browser only picks up a new value on the next `--set-build-env-vars` **rebuild**,
+  not from this runtime update.
 - Stripe has been removed (Block D / D1) — no `STRIPE_*` vars are needed. PayPal
   handles cards via guest checkout.
-- `DATABASE_URL` must be Neon's **pooled** `main`-branch endpoint.
+- `DATABASE_URL` defaults to Neon's **pooled `main`** endpoint (read from
+  `.env.local`). For a staging service that must not touch production data, point
+  the `DATABASE_URL` secret at the **dev** branch (`DATABASE_URL_DEV`) instead.
 
 ---
 

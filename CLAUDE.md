@@ -46,6 +46,15 @@ Next.js 16 App Router + TypeScript. Two data stores, split by durability (see [d
 
 > **Migration status (Plan B).** LibreBooking has been **removed** — Neon is the system of record for reservations, and the order flow ([lib/orders/preflight.ts](lib/orders/preflight.ts), [lib/orders/fulfill.ts](lib/orders/fulfill.ts), [app/api/availability/route.ts](app/api/availability/route.ts)) books against `lib/scheduler`. **Stripe has also been removed** (Block D / D1): PayPal — at the nonprofit rate, covering PayPal/Venmo/guest credit-card — is the sole payment processor. No `lib/librebooking` or Stripe code remains.
 
+### Deployment (Cloud Run)
+
+Runbook: [docs/DEPLOY_CLOUD_RUN.md](docs/DEPLOY_CLOUD_RUN.md); status/history: [docs/EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md) Block 3.
+
+- **Live service (staging):** `https://bcc-rentals-78017895905.us-east1.run.app` — project `bcc-storefront-staging`, region `us-east1`, deployed from source (`Dockerfile`) via `gcloud run deploy --source .`.
+- **Public access:** `allUsers` → `run.invoker` is blocked by the org policy `iam.allowedPolicyMemberDomains` (domain-restricted sharing). Worked around with `gcloud run services update bcc-rentals --region=us-east1 --no-invoker-iam-check` (per-service; no org-admin needed; reversible via `--invoker-iam-check`). Prefer this over trying to add an `allUsers` binding.
+- **Env vars must be set per project.** Env vars don't carry over between projects/services — re-run [scripts/deploy/set-staging-env.sh](scripts/deploy/set-staging-env.sh) (secrets → Secret Manager, plain config → `--set-env-vars`, sourced from `.env.local`) against each new service or `lib/env.ts` Zod validation 500s at boot. Watch `PAYPAL_ENV`: it must be exactly `sandbox` or `live` (a stray char/CRLF from `.env.local` silently fails the enum).
+- Custom domain (`rentals.bachmancc.org`) and Secret Manager are **deferred to Block G**, post-demo.
+
 ### Product catalog in Postgres ([lib/products/repository.ts](lib/products/repository.ts))
 
 The catalog is DB-owned so BCC admins can add/edit products (and vary pricing by day/time) with **no redeploy** — this reversed an earlier "config file is source of truth" decision. `lib/products/config.ts` was deleted; it is now split into:

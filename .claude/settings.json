@@ -4,7 +4,8 @@
     "CLAUDE_CODE_USE_VERTEX": "1",
     "ANTHROPIC_VERTEX_PROJECT_ID": "rice-tti-pocs",
     "CLOUD_ML_REGION": "global",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-8"
+    "ANTHROPIC_DEFAULT_MODEL": "claude-5",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5-5"
   },
   "permissions": {
     "allow": [
