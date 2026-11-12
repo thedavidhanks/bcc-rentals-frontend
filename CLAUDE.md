@@ -37,6 +37,10 @@ Run a single Vitest file: `npx vitest run lib/products/pricing.test.ts`. Tests u
 
 The `@/*` path alias maps to the repo root (configured in both [tsconfig.json](tsconfig.json) and [vitest.config.ts](vitest.config.ts)).
 
+## Planning & tracking
+
+GitHub is the source of truth for status, shared with the companion admin repo on [Project #4](https://github.com/users/thedavidhanks/projects/4). Each block is a **milestone** (`Block D — Demo state`), each step an **issue** titled with its step ID (`D3 — …`). [docs/roadmap.md](docs/roadmap.md) holds each block's intent only — never issue lists or counts; [docs/EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md) holds architecture and the archive of pre-tracker work. Don't add task checklists to either doc — file an issue instead.
+
 ## Architecture
 
 Next.js 16 App Router + TypeScript. Two data stores, split by durability (see [docs/ARCHITECTURE_PLAN_B.md](docs/ARCHITECTURE_PLAN_B.md), [docs/EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md)):
@@ -48,7 +52,7 @@ Next.js 16 App Router + TypeScript. Two data stores, split by durability (see [d
 
 ### Deployment (Cloud Run)
 
-Runbook: [docs/DEPLOY_CLOUD_RUN.md](docs/DEPLOY_CLOUD_RUN.md); status/history: [docs/EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md) Block 3.
+Runbook: [docs/DEPLOY_CLOUD_RUN.md](docs/DEPLOY_CLOUD_RUN.md); history: [docs/EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md) Block 3 archive; open work: the Block 3 / Block G milestones.
 
 - **Live service (staging):** `https://bcc-rentals-78017895905.us-east1.run.app` — project `bcc-storefront-staging`, region `us-east1`, deployed from source (`Dockerfile`) via `gcloud run deploy --source .`.
 - **Public access:** `allUsers` → `run.invoker` is blocked by the org policy `iam.allowedPolicyMemberDomains` (domain-restricted sharing). Worked around with `gcloud run services update bcc-rentals --region=us-east1 --no-invoker-iam-check` (per-service; no org-admin needed; reversible via `--invoker-iam-check`). Prefer this over trying to add an `allUsers` binding.

@@ -1,8 +1,8 @@
-# BCC Rentals — Execution Plan (Plan B)
+# BCC Rentals — Architecture & archive (Plan B)
 
-Living document tracking execution of [ARCHITECTURE_PLAN_B.md](./ARCHITECTURE_PLAN_B.md). Update task statuses as work progresses and commit each change.
+Architecture of the storefront and the archive of completed work, from [ARCHITECTURE_PLAN_B.md](./ARCHITECTURE_PLAN_B.md).
 
-**Last updated:** 2026-11-11 · **Progress:** Block 1 ✅ (P1.1–P1.7) · Block 2 ✅ (N2.3–N2.7; N2.1/N2.2 dropped — see hosting note) · Block 2.5 ✅ browse-by-category shipped · Block 3 🚧 (N3.1 ✅ containerized · N3.2 ✅ Cloud Run service live — redeployed 2026-07-23 to `bcc-storefront-staging` at `https://bcc-rentals-78017895905.us-east1.run.app`, serving 200 · N3.2a ✅ public via `--no-invoker-iam-check` (org policy blocks `allUsers`) · N3.3 ✅ env vars + Secret Manager set on staging; N3.5 = PayPal webhook remaining) · Block D 🚧 demo state (D1 ✅ Stripe removed; D2 ✅ PayPal/Venmo/card pay locally; D5 ✅ admin outlined → `ADMIN_APP_SPEC.md`; D3/D4 open) — **custom-domain mapping + Secret Manager deferred to Block G, post-demo** — **scheduler is the live booking backend; LibreBooking + Stripe removed** · **admin is now a separate app (see `ADMIN_APP_SPEC.md`), superseding in-repo Block 6**
+**This is no longer the task list.** Since 2026-11-12 every open task is a GitHub issue: each block is a [milestone](https://github.com/thedavidhanks/bcc-rentals-frontend/milestone) in this repo, each step an issue, and status lives on [Project #4](https://github.com/users/thedavidhanks/projects/4) alongside the companion [admin app](https://github.com/thedavidhanks/bcc-rentals-admin). Each block's intent is in [roadmap.md](./roadmap.md). Step IDs (`N3.5`, `D3`, `G1`) are kept as issue-title prefixes, so references below still resolve.
 
 ---
 
@@ -91,9 +91,11 @@ Detailed schema, SQL queries, LibreBooking→Scheduler method map, and rationale
 
 ---
 
-## Priority — do now (Block 1: build scheduler)
+## Archive — completed work
 
-Blocks production cutover. Est. ~3 days.
+Detailed notes for every step finished before issue tracking began. Open steps from each block are listed with their issue.
+
+### Block 1 — Build scheduler ✅ (2026-07-13) · [milestone](https://github.com/thedavidhanks/bcc-rentals-frontend/milestone/1)
 
 - [x] **P1.1** ✅ Provision Neon Postgres project with two branches: `main` (prod) and `dev` (shared dev/preview). Capture `DATABASE_URL` for each. — Both branches live in `us-east-1` (prod endpoint `ep-rough-shadow`, dev endpoint `ep-cool-field`). Local `.env.local` holds `DATABASE_URL` (prod) + `DATABASE_URL_DEV` (dev); credentials never committed. Follow-up during P1.2/P1.3: standardize pooled (runtime) vs. direct/unpooled (DDL) endpoints across both.
 - [x] **P1.2** ✅ Define schema in `lib/scheduler/db/schema.sql` (or Drizzle/Kysely). Tables: `items`, `reservations` + `reservations_item_time_idx`. — Raw SQL + `pg` (no ORM). `items` kept **minimal** (identity + inventory: `slug`, `name`, `type`, `total_stock`, `active`); pricing/policy stay in `lib/products/config.ts` to avoid a lossy dual source of truth. **⚠️ Reversed 2026-07-10** (see the "products in DB" Change log entry): the **database is now the source of truth for the full product** — `items` gained content/policy columns, pricing moved to a new `item_prices` table, `config.ts` was replaced by the async `lib/products/repository.ts`, so an admin can add/edit products with no redeploy and pricing can vary by day/time. Applied to **both** Neon branches — `dev` via `npm run db:apply` (direct/unpooled `DATABASE_URL_DEV`) and `main` via `npm run db:apply:prod` (`DATABASE_URL`), since `main` is not yet exposed/in use and keeping the branches in sync avoids drift. `DATABASE_URL`/`DATABASE_URL_DEV` added to `lib/env.ts` + README. Pooled-vs-direct: dev DDL uses the direct endpoint; `main`'s DDL currently runs over the pooled endpoint (fine for `CREATE TABLE IF NOT EXISTS`) — standardizing a direct prod endpoint remains the P1.1 follow-up; runtime pooled wiring lands in P1.3.
@@ -103,11 +105,7 @@ Blocks production cutover. Est. ~3 days.
 - [x] **P1.6** ✅ Unit tests for `lib/scheduler/*` (mock Postgres client). — Added `lib/scheduler/client.test.ts` (4 methods: capacity math, buffer-window widening, advisory-lock→re-check→INSERT ordering, `SchedulerConflictError`/`SchedulerError`, null-on-bad-UUID, row→camelCase mapping) and `lib/products/repository.test.ts` (item/price → `Product` mapping, `baseCents` priority selection, `hourlyConstraints`, 30s cache). Both mock the `getPool`/`withTransaction` seam in `lib/scheduler/db.ts` via `vi.mock` (no real `pg`/env boot) — the repo's first mocked-dependency tests, since no `lib/librebooking/*.test.ts` ever existed; style follows `policy.test.ts`/`pricing.test.ts`. 25 new tests; full suite 43 pass, typecheck clean. No config change needed (existing `server-only` alias suffices).
 - [x] **P1.7** ✅ Seed initial items in production Neon: tent, popcorn machine, party room. — `scripts/db/seed-products.mjs` (idempotent upsert by `slug`, replaces each item's price rows) + `npm run db:seed` / `db:seed:prod`. Seeded to **both** branches; values match the pre-migration config (tent $150/day, popcorn $50/day, party-room $40/hr). (Chairs / tables / additional items per N4.4.)
 
----
-
-## Next
-
-### Block 2 — Swap call sites + ship ICS feed ✅ (2026-07-13)
+### Block 2 — Swap call sites + ship ICS feed ✅ (2026-07-13) · [milestone](https://github.com/thedavidhanks/bcc-rentals-frontend/milestone/2)
 
 - [x] ~~**N2.1** Downgrade Next.js 16 → 15~~ **Dropped** — target moved from Amplify to Cloud Run (see hosting note); Next 16 is kept.
 - [x] ~~**N2.2** Audit for Amplify-unsupported features~~ **Dropped** — not applicable to Cloud Run (runs the standard Node server).
@@ -118,7 +116,7 @@ Blocks production cutover. Est. ~3 days.
 - [x] **N2.7** ✅ Deleted `lib/librebooking/`; removed `LIBREBOOKING_*` / `LB_RESOURCE_ID_*` from `lib/env.ts`, `.env.local.example`, README env table; dropped the transitional `resourceId` from the `Product` type + repository mapping (DB `resource_id` column left in place, harmless).
 - [x] **N2.8** ✅ (added) Full **README overhaul** to match the current stack: rewrote the overview + architecture bullets (Neon = system of record, Redis ephemeral-only, Resend customer+staff email, ICS feed), replaced the LibreBooking BCC-admin prereqs with Neon setup (`db:apply`/`db:seed`), updated the smoke checklist, deployment section (Vercel → Cloud Run), "adding a product" (data-not-code), project layout (`scheduler/` + `calendar/`), and risk areas. No `LibreBooking`/`Vercel`/`Amplify` references remain.
 
-### Block 2.5 — Browse rentals by category ✅ (2026-11-11)
+### Block 2.5 — Browse rentals by category ✅ (2026-11-11) · [milestone](https://github.com/thedavidhanks/bcc-rentals-frontend/milestone/3)
 
 Added after Block 2 — not in the original Plan B; captured here to keep the plan in sync with shipped code.
 
@@ -127,67 +125,31 @@ Added after Block 2 — not in the original Plan B; captured here to keep the pl
 - [x] **N2.5c** ✅ `scripts/db/seed-products.mjs` extended to seed categories and product↔category assignments.
 - [x] **N2.5d** ✅ Tests: `components/CatalogBrowser.test.tsx` (filter behavior) + category-mapping cases in `lib/products/repository.test.ts`.
 
-### Block 3 — Containerize + deploy to Cloud Run (~half day)
+### Block 3 — Containerize + deploy to Cloud Run · [milestone](https://github.com/thedavidhanks/bcc-rentals-frontend/milestone/4)
 
 - [x] **N3.1** ✅ Added `output: 'standalone'` to [next.config.ts](../next.config.ts) + a multi-stage [Dockerfile](../Dockerfile) (Node 22 alpine, non-root `node` user, port 8080) and [.dockerignore](../.dockerignore). Added a `SKIP_ENV_VALIDATION` escape hatch to [lib/env.ts](../lib/env.ts) so `next build` (and CI) runs without real secrets — the runner leaves it unset so runtime env is still Zod-validated at boot; `NEXT_PUBLIC_PAYPAL_CLIENT_ID` is passed as a build `ARG` since it's client-inlined. **Docker isn't installed in this devcontainer**, so verification was done via `next build` (produces `.next/standalone/server.js`) + booting `node server.js` on 8080: `/` (200, DB-backed), `/api/calendar/tent` (200 ICS), `/api/availability` (200 PII-free JSON) all pass; typecheck/lint clean, 43 tests green. The actual `docker build` runs remotely via Cloud Build in N3.2 (`gcloud run deploy --source`). Runbook for N3.2–N3.5: [docs/DEPLOY_CLOUD_RUN.md](./DEPLOY_CLOUD_RUN.md).
 - [x] **N3.2** ✅ Created the Cloud Run service `bcc-rentals` (region `us-east1`, min-instances 0, `--allow-unauthenticated`), deployed from source via Cloud Build (`Dockerfile`). Originally live at `https://bcc-rentals-558348229437.us-east1.run.app` — verified `/` → `200` on 2026-07-15. **Redeployed 2026-07-23** to project `bcc-storefront-staging` (project #78017895905) → **new Service URL `https://bcc-rentals-78017895905.us-east1.run.app`** (revision `bcc-rentals-00001-l5v`, serving 100% traffic). First deploy required granting the compute SA (`78017895905-compute@developer.gserviceaccount.com`) `roles/cloudbuild.builds.builder` to fix a Cloud Build `storage.objects.get` 403.
 - [x] **N3.2a** ✅ (2026-07-23) Made the Cloud Run service publicly reachable. The `allUsers` → `run.invoker` binding is **blocked by the org policy `constraints/iam.allowedPolicyMemberDomains`** (domain-restricted sharing on org `513346324292` / folder `873642981137`) — `add-iam-policy-binding` fails with `FAILED_PRECONDITION: One or more users named in the policy do not belong to a permitted customer`. Legacy `allowedPolicyMemberDomains` can't take an `allUsers` exception, and relaxing it needs org-level `roles/orgpolicy.policyAdmin`. **Sidestepped** with the Cloud Run per-service setting made for exactly this case: `gcloud run services update bcc-rentals --region=us-east1 --no-invoker-iam-check` (disables the invoker IAM check so no `allUsers` binding is needed; reversible via `--invoker-iam-check`; gated only by `run.managed.requireInvokerIam`, off by default). The 403 is gone — requests now reach the app.
 - [x] **N3.3 (staging)** ✅ (2026-07-23) Wired env vars + secrets onto the `bcc-storefront-staging` service. Secrets (`DATABASE_URL`, `PAYPAL_CLIENT_SECRET`, `RESEND_API_KEY`, `UPSTASH_REDIS_REST_TOKEN`) live in **Secret Manager** (runtime SA granted `secretmanager.secretAccessor`), wired via `--set-secrets`; the rest are plain `--set-env-vars`. Done with [scripts/deploy/set-staging-env.sh](../scripts/deploy/set-staging-env.sh) (reads `.env.local` locally, never printing secret values). **Gotcha:** the script's `.env.local`-sourced `PAYPAL_ENV` value failed `z.enum(["sandbox","live"])` (stray char/CRLF) → boot still 500'd until it was reset explicitly to `sandbox`. Service now serves **200** on `/`, `/rentals/[slug]`, and `/api/calendar/[slug]` (revision `bcc-rentals-00003-6n6`). `DATABASE_URL` points at Neon **prod `main`** per the runbook. Secret Manager satisfies G2 for this service (still open for the production service). **Follow-up for the payment demo (not the 500):** `NEXT_PUBLIC_PAYPAL_CLIENT_ID` is build-time-inlined — if the deploy's `--set-build-env-vars` used the placeholder, redeploy with the real sandbox client ID before demoing PayPal.
 - [x] **N3.3** ✅ Set the full `lib/env.ts` var list as Cloud Run service config (`--set-env-vars`): `DATABASE_URL`, `STAFF_NOTIFICATION_EMAIL`, PayPal (`PAYPAL_*`, `NEXT_PUBLIC_PAYPAL_CLIENT_ID`), Resend (`RESEND_API_KEY`, `EMAIL_FROM`), Upstash, and Stripe placeholders; no LibreBooking vars. Service boots (Zod validation passes). **Deferred:** secrets are currently plain env vars, **not** Secret Manager — hardening moved to **Block G / G2** ("Use Secret Manager for high-risk secrets"), per demo-first priority.
-- [ ] **N3.5** Register the PayPal webhook URL against the Cloud Run **run.app** HTTPS URL (`.../api/webhooks/paypal`) so payment works in the demo. Re-point to the custom domain in **Block G / G1**.
+- **Open:** N3.5 PayPal webhook → [Issue #2](https://github.com/thedavidhanks/bcc-rentals-frontend/issues/2). (N3.4 custom domain moved to Block G → [Issue #15](https://github.com/thedavidhanks/bcc-rentals-frontend/issues/15).)
 
-> **N3.4 (custom domain mapping) moved to Block G / G1** — the front-end must reach demo state (Block D) and get your approval before `rentals.bachmancc.org` is mapped.
-
-### Block D — Demo state 🎯 (next priority; gate before custom domain)
-
-Get the front-end into a demo-ready, approved state on the Cloud Run **run.app** URL **before** mapping `rentals.bachmancc.org` (Block G). "Demo state" = all of:
+### Block D — Demo state · [milestone](https://github.com/thedavidhanks/bcc-rentals-frontend/milestone/5)
 
 - [x] **D1 — Stripe removed.** ✅ (2026-07-15) Deleted `app/api/checkout/stripe/route.ts`, `app/api/webhooks/stripe/route.ts`, `lib/payments/stripe.ts`; narrowed the order flow to PayPal-only (`store.ts` `paymentProvider`/`recordWebhookEvent`, `fulfill.ts` `FulfillInput`, `refund.ts`, `preflight.ts` comment). `BookingWidget` lost the Stripe "Pay with card" button (+`startStripe`/`submitting`/unused `Button` import); PayPal funding now enables `card` (guest credit-card path — D2). Dropped `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`/`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` from `lib/env.ts`; removed `stripe` + `@stripe/stripe-js` deps; scrubbed Stripe prose from README, CLAUDE.md, and DEPLOY_CLOUD_RUN.md. Verified: typecheck 0 errors, lint clean, 43 tests pass, `next build` succeeds (only PayPal routes remain). **Cloud Run cleanup pending redeploy:** the live revision's image still requires `STRIPE_*` at boot, so those service env vars must be dropped **in the same `gcloud run deploy` that ships this Stripe-free image** — removing them standalone would fail the old image's boot.
 - [x] **D2 — Payment works with PayPal or credit card.** ✅ (2026-07-17) Verified locally on `localhost:3000` against PayPal sandbox: **PayPal, Venmo, and guest credit-card** each complete an order end-to-end → synchronous `capture-order` endpoint fulfills → reservation written → "Reservation Confirmed" page renders every time. The **synchronous capture path does the fulfillment**, so N3.5 (webhook) is **not** required for the payment to work — the webhook is a redundant/backup path only needed for the deployed Cloud Run demo. No code changes were needed; the integration was already complete. Test runs created 3 `drill-1` reservations (Jul 19–21) on the prod `main` branch, intentionally left in place. **Note:** the earlier "popup disappears / `GetCheckoutDetails` 503" failure was a PayPal *sandbox-side* outage of one GraphQL op tied to a wedged sandbox app — resolved by creating a fresh sandbox business account + REST app and swapping `PAYPAL_CLIENT_ID`/`PAYPAL_CLIENT_SECRET`/`NEXT_PUBLIC_PAYPAL_CLIENT_ID`; nothing in our code.
-- [ ] **D3 — Emails sent.** Customer receives a confirmation email on successful rental; staff receive a notification on each reservation (`sendStaffNotification` → `STAFF_NOTIFICATION_EMAIL`). Verify both actually deliver from the deployed service. (Sending-domain SPF/DKIM verification is **N4.5**; for the demo, Resend's default/sandbox sender is acceptable.)
-- [ ] **D4 — UI navigable + approved.** Storefront listing, `/rentals/[slug]`, booking widget, checkout, and success/error pages are coherent and navigable end-to-end. **Requires David's explicit approval** before this box is checked.
 - [x] **D5 — Admin outlined.** ✅ (2026-11-11) [docs/ADMIN_APP_SPEC.md](./ADMIN_APP_SPEC.md) — a 563-line build spec for staff administration (scheduler + admin roles; product/category/price management; race-safe calendar writes mirroring `lib/scheduler/db.ts`; grouped & recurring reservations; Cloud Run deploy). **Decision:** the admin is a **separate app/repo** that shares this storefront's Neon DB as the single source of truth and uses **Firebase Auth / GCP Identity Platform** — this supersedes the original in-repo `/admin` + Basic Auth plan in **Block 6** (see note there). (Interim path today: products via `db:seed` / direct SQL; slots via `status='block'` reservation inserts.)
+- **Open:** D3 emails deliver → [Issue #3](https://github.com/thedavidhanks/bcc-rentals-frontend/issues/3); D4 UI approved → [Issue #4](https://github.com/thedavidhanks/bcc-rentals-frontend/issues/4).
 
----
+### Blocks 4, 5, G, 7 — not started
 
-### Block 4 — Product & policy decisions (BCC admin, parallelizable with dev)
+No completed steps. Open work: [Block 4](https://github.com/thedavidhanks/bcc-rentals-frontend/milestone/6) (Issues [#5](https://github.com/thedavidhanks/bcc-rentals-frontend/issues/5)–[#10](https://github.com/thedavidhanks/bcc-rentals-frontend/issues/10)), [Block 5](https://github.com/thedavidhanks/bcc-rentals-frontend/milestone/7) ([#11](https://github.com/thedavidhanks/bcc-rentals-frontend/issues/11)–[#14](https://github.com/thedavidhanks/bcc-rentals-frontend/issues/14)), [Block G](https://github.com/thedavidhanks/bcc-rentals-frontend/milestone/8) ([#15](https://github.com/thedavidhanks/bcc-rentals-frontend/issues/15), [#16](https://github.com/thedavidhanks/bcc-rentals-frontend/issues/16), [#1](https://github.com/thedavidhanks/bcc-rentals-frontend/issues/1)), [Block 7](https://github.com/thedavidhanks/bcc-rentals-frontend/milestone/9) ([#17](https://github.com/thedavidhanks/bcc-rentals-frontend/issues/17)–[#19](https://github.com/thedavidhanks/bcc-rentals-frontend/issues/19)).
 
-- [ ] **N4.1** Confirm final rental pricing per item.
-- [ ] **N4.2** Confirm party-room hours and slot length.
-- [ ] **N4.3** Confirm min lead time and max advance booking window per item.
-- [ ] **N4.4** Define fungible inventory (chairs, tables, plates, etc.) with `total_stock` quantities.
-- [ ] **N4.5** Verify Resend sending domain `bachmancc.org` (SPF/DKIM records).
-- [ ] **N4.6** Finalize cancellation/refund policy text in the confirmation email.
-
-### Block 5 — Production smoke test
-
-- [ ] **N5.1** Availability respects existing reservations.
-- [ ] **N5.2** PayPal (sandbox → live) → webhook → reservation written → email arrives → success page renders.
-- [ ] **N5.3** Two concurrent browsers on the same slot → second sees clean error + auto-refund.
-- [ ] **N5.4** Fungible item: book 50 chairs from stock of 100, verify 50 still available.
-
-### Block G — Go-live hardening (post-demo; after Block D approval)
-
-Deferred out of Block 3 so the demo can be validated on the run.app URL first.
-
-- [ ] **G1** Map `rentals.bachmancc.org` (Cloud Run domain mapping) and cut the GoDaddy CNAME (lower TTL first). *(Was N3.4 — moved here; demo state must be approved first.)* Then re-point the PayPal webhook (N3.5) from the run.app URL to the custom domain.
-- [ ] **G2** Use Secret Manager for high-risk secrets — migrate `DATABASE_URL`, `PAYPAL_CLIENT_SECRET`, `RESEND_API_KEY`, `UPSTASH_REDIS_REST_TOKEN` (and any remaining sensitive vars) from plain Cloud Run env vars to Secret Manager (`--set-secrets`), granting the runtime service account `secretmanager.secretAccessor`. *(Split out of N3.3.)* See [DEPLOY_CLOUD_RUN.md](./DEPLOY_CLOUD_RUN.md) N3.3.
-
-### Block 6 — Staff admin UI (follow-up sprint, ~2–3 days)
+### Block 6 — Staff admin UI ✗ superseded (2026-11-11)
 
 > **⚠️ Superseded (2026-11-11).** The admin is now a **separate app/repo** specified in [docs/ADMIN_APP_SPEC.md](./ADMIN_APP_SPEC.md) (D5), not in-repo `/admin` routes. The spec replaces the auth and page design below: **Firebase Auth / GCP Identity Platform with scheduler/admin roles** (not Basic Auth), a weekly calendar + products/reservations/pricing pages, and `categories`/`item_categories` + new admin-only tables. The items below are kept for history. The storefront-side obligation that remains is to keep the shared schema and the race-safe write pattern (`pg_advisory_xact_lock` in `lib/scheduler/db.ts`) stable, since the admin app is a second writer to the same tables.
 
-- [ ] ~~**N6.1** Admin auth: Basic Auth via env-stored password (V1).~~ Superseded → Firebase Auth (ADMIN_APP_SPEC §3).
-- [ ] ~~**N6.2** `/admin/schedule` — FullCalendar grid per item.~~ Superseded → separate-app weekly calendar (ADMIN_APP_SPEC §7).
-- [ ] ~~**N6.3** `/admin/reservations` — filterable list with customer search.~~ Superseded (ADMIN_APP_SPEC §7).
-- [ ] ~~**N6.4** `/admin/blocks/new` — form to insert `status='block'` reservation.~~ Superseded (ADMIN_APP_SPEC §6–8).
-- [ ] ~~**N6.5** `/admin/inventory` — per-item stock-vs-reserved chart.~~ Superseded (ADMIN_APP_SPEC §6).
-
-### Block 7 — Operations (post-launch)
-
-- [ ] **N7.1** External uptime monitor (UptimeRobot free tier or equivalent).
-- [ ] **N7.2** Runbooks: "customer paid but no confirmation" + "Neon incident" (with optional `pg_dump` to S3 fallback on free tier).
-- [ ] **N7.3** Credential rotation cadence for PayPal / Resend / Neon.
+Its steps (N6.1 Basic Auth, N6.2 schedule grid, N6.3 reservations list, N6.4 blocks form, N6.5 inventory chart) were never started and have no milestone or issues; that work is tracked in the admin repo.
 
 ---
 
@@ -224,3 +186,4 @@ Deferred out of Block 3 so the demo can be validated on the run.app URL first.
 - **2026-07-14** — N3.1 complete: repo containerized (`output: 'standalone'` + multi-stage `Dockerfile` + `.dockerignore`); `SKIP_ENV_VALIDATION` added to `lib/env.ts` for secret-free builds. Standalone server verified booting on 8080 (storefront/ICS/availability all 200). Added `docs/DEPLOY_CLOUD_RUN.md` runbook for the user-run infra steps N3.2–N3.5.
 - **2026-11-11** — **Plan reconciled with shipped code.** Added **Block 2.5** (browse rentals by category — shipped + tested, commits `f107201`/`ace5065`). Marked **D5 complete** → `docs/ADMIN_APP_SPEC.md` (commit `1074a9e`). **Decided the admin is a separate app/repo** (Firebase Auth, shared Neon DB), **superseding in-repo Block 6** (annotated, items struck through). Open demo-state items are now D3 (verify email delivery from the deployed service) and D4 (UI approval).
 - **2026-07-23** — Cloud Run **redeployed to project `bcc-storefront-staging`** → new Service URL `https://bcc-rentals-78017895905.us-east1.run.app`. Fixed a first-deploy Cloud Build 403 by granting the compute SA `78017895905-compute@developer.gserviceaccount.com` the `roles/cloudbuild.builds.builder` role. **Public access (N3.2a):** the `allUsers` → `run.invoker` binding is blocked by org policy `iam.allowedPolicyMemberDomains` (domain-restricted sharing); worked around per-service with `--no-invoker-iam-check` instead of an org-policy change. **Env/secrets (N3.3 staging):** secrets → Secret Manager, plain config → `--set-env-vars`, via `scripts/deploy/set-staging-env.sh`; a malformed `.env.local` `PAYPAL_ENV` value kept it 500ing until reset to `sandbox`. Service now serves 200 across `/`, `/rentals/[slug]`, `/api/calendar/[slug]` (revision `bcc-rentals-00003-6n6`).
+- **2026-11-12** — **Tracking moved to GitHub.** Each block is now a milestone and each open step an issue (Issues #2–#19, plus #1 retitled `G3`), all on Project #4 with the admin repo. This file became architecture + archive; block intent moved to the new [roadmap.md](./roadmap.md).
