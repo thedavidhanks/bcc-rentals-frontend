@@ -10,13 +10,17 @@ Act as an **orchestrator**. Your job is to understand the request, plan the appr
 
 **Delegate** substantial work to the matching subagent:
 
-- **Code changes** (features, bug fixes, refactors) → `code-writer`. It branches, implements, has `test-engineer` verify, and merges only when green. Don't hand-edit source for non-trivial changes when this agent fits.
-- **Tests** (writing, running, diagnosing failures) → `test-engineer`.
+- **Code changes** (features, bug fixes, refactors) → `github-workflow:code-writer`. It branches, implements, has `test-engineer` verify, and merges back only into a feature branch — work started from `main` is left on its verified branch for a pull request. Don't hand-edit source for non-trivial changes when this agent fits.
+- **Tests** (writing, running, diagnosing failures) → `github-workflow:test-engineer`.
+- **UI/UX, accessibility, responsive review** → `github-workflow:ui-ux-front-end-test-engineer`.
 - **Broad code search / "where is X" across many files** → `Explore` (read-only fan-out).
 - **Multi-step research or open-ended investigation** → `general-purpose`.
 - **Implementation strategy / architectural planning** → `Plan`.
-- **Quality audit of recently written code** → `code-improvement-advisor`.
-- **Visual assets (SVG/icons/diagrams)** → `graphic-designer`.
+- **Quality audit of recently written code** → `github-workflow:code-improvement-advisor`.
+- **Large tasks to fan out** → `github-workflow:work-distributor`.
+- **Visual assets (SVG/icons/diagrams)** → `graphic-designer` (local to this repo).
+
+**Issues, PRs, status, roadmap** → the `github-workflow` plugin skills: `/github-workflow:create-github-issue`, `/github-workflow:open-pull-request` (a hook blocks `gh pr create` until the roadmap has been checked), `/github-workflow:project-status`, `/github-workflow:next-issue`, `/github-workflow:update-roadmap`. They're shared with `bcc-rentals-admin` via the [github-workflows](https://github.com/thedavidhanks/github-workflows) marketplace; repo-specific settings live in [.claude/github-workflow.md](.claude/github-workflow.md). The plugin is enabled in `.claude/settings.json` and pre-installed by [.devcontainer/post-create.sh](.devcontainer/post-create.sh). Change shared agents and skills in that repo, not here.
 
 Launch independent delegations **in parallel** (multiple Agent calls in one message). Subagents don't share your context, so give each a self-contained brief and the relevant `file_path:line` pointers.
 
@@ -37,6 +41,10 @@ Run a single Vitest file: `npx vitest run lib/products/pricing.test.ts`. Tests u
 
 The `@/*` path alias maps to the repo root (configured in both [tsconfig.json](tsconfig.json) and [vitest.config.ts](vitest.config.ts)).
 
+## Planning & tracking
+
+GitHub is the source of truth for status, shared with the companion admin repo on [Project #4](https://github.com/users/thedavidhanks/projects/4). Each block is a **milestone** (`Block D — Demo state`), each step an **issue** titled with its step ID (`D3 — …`). [docs/roadmap.md](docs/roadmap.md) holds each block's intent only — never issue lists or counts; [docs/EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md) holds architecture and the archive of pre-tracker work. Don't add task checklists to either doc — file an issue instead.
+
 ## Architecture
 
 Next.js 16 App Router + TypeScript. Two data stores, split by durability (see [docs/ARCHITECTURE_PLAN_B.md](docs/ARCHITECTURE_PLAN_B.md), [docs/EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md)):
@@ -48,7 +56,7 @@ Next.js 16 App Router + TypeScript. Two data stores, split by durability (see [d
 
 ### Deployment (Cloud Run)
 
-Runbook: [docs/DEPLOY_CLOUD_RUN.md](docs/DEPLOY_CLOUD_RUN.md); status/history: [docs/EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md) Block 3.
+Runbook: [docs/DEPLOY_CLOUD_RUN.md](docs/DEPLOY_CLOUD_RUN.md); history: [docs/EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md) Block 3 archive; open work: the Block 3 / Block G milestones.
 
 - **Live service (staging):** `https://bcc-rentals-78017895905.us-east1.run.app` — project `bcc-storefront-staging`, region `us-east1`, deployed from source (`Dockerfile`) via `gcloud run deploy --source .`.
 - **Public access:** `allUsers` → `run.invoker` is blocked by the org policy `iam.allowedPolicyMemberDomains` (domain-restricted sharing). Worked around with `gcloud run services update bcc-rentals --region=us-east1 --no-invoker-iam-check` (per-service; no org-admin needed; reversible via `--invoker-iam-check`). Prefer this over trying to add an `allUsers` binding.
