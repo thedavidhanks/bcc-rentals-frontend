@@ -26,7 +26,21 @@
       "Bash(npm run test:*)",
       "mcp__duckduckgo__web-search"
     ],
-    "deny": ["WebSearch", "Bash(git merge:*)"]
+    "deny": [
+      "WebSearch",
+      "Bash(git merge:*)"
+    ]
   },
-  "model": "opus"
+  "model": "opus",
+  "extraKnownMarketplaces": {
+    "github-workflows": {
+      "source": {
+        "source": "github",
+        "repo": "thedavidhanks/github-workflows"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "github-workflow@github-workflows": true
+  }
 }

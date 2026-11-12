@@ -43,5 +43,5 @@
     "source=gcloud-config-${devcontainerId},target=/home/node/.config/gcloud,type=volume",
     "source=gh-config-${devcontainerId},target=/home/node/.config/gh,type=volume"
   ],
-  "postCreateCommand": "sudo chown -R node:node /home/node/.claude /home/node/.config/gcloud /home/node/.config/gh; [ -n \"$GIT_USER_NAME\" ] && git config --global user.name \"$GIT_USER_NAME\"; [ -n \"$GIT_USER_EMAIL\" ] && git config --global user.email \"$GIT_USER_EMAIL\"; true"
+  "postCreateCommand": "bash .devcontainer/post-create.sh"
 }
