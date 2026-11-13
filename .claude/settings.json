@@ -27,8 +27,7 @@
       "mcp__duckduckgo__web-search"
     ],
     "deny": [
-      "WebSearch",
-      "Bash(git merge:*)"
+      "WebSearch"
     ]
   },
   "model": "opus",
