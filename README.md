@@ -100,6 +100,8 @@ Follow the printed URL, sign in with a Google account that has access to the `ri
 
 Copy `.env.local.example` to `.env.local`. All vars are validated at boot via `lib/env.ts` — the app fails fast if anything is missing.
 
+`.env.local` uses dotenv syntax: inline `# comments`, quoted values, and `$VAR` / `${VAR}` references (e.g. `DATABASE_URL="$DATABASE_URL_DEV"`) are all supported, and [scripts/deploy/set-staging-env.sh](scripts/deploy/set-staging-env.sh) parses the file the same way when pushing it to Cloud Run. Run `bash scripts/deploy/set-staging-env.sh --check` to validate it without touching GCP.
+
 | Var | Purpose |
 | --- | --- |
 | `NEXT_PUBLIC_SITE_URL` | Public site URL — used in payment redirects. |

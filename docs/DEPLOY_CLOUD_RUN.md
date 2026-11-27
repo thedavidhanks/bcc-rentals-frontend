@@ -83,6 +83,21 @@ your local `.env.local` and pipes it into `gcloud` over stdin, so **no secret is
 ever printed, pasted into a command, or written to shell history**. Being
 idempotent, it's also safe to re-run after any `.env.local` edit.
 
+**Safety checks (Issue #26).** `.env.local` is parsed the way Next.js reads it
+([`scripts/deploy/lib/dotenv.sh`](../scripts/deploy/lib/dotenv.sh)): inline
+`# comments` and quotes are stripped, CRLF is tolerated, and `$VAR` / `${VAR}`
+references are expanded (not in single quotes). Before step 1/3 the script
+validates every value and exits non-zero, naming the variable (never its value),
+if any is empty, still contains an unexpanded `$VAR`, or is malformed
+(`PAYPAL_ENV` not exactly `sandbox`/`live`, `DATABASE_URL` not `postgres…`,
+`RESEND_API_KEY` not `re_…`, `UPSTASH_REDIS_REST_URL` not `https://`,
+`PAYPAL_WEBHOOK_ID` a `pending-…` placeholder). It then prints the non-secret
+plain config it is about to set and asks for confirmation (`--yes` skips the
+prompt; `--check` validates and prints without calling `gcloud`). Because
+`--set-env-vars` **replaces** the service's whole plain-config set, a value
+changed directly on Cloud Run (e.g. `PAYPAL_WEBHOOK_ID` after N3.5) is overwritten
+by `.env.local` — update `.env.local` first and check the summary.
+
 **When to run it:** immediately after the N3.2 deploy, and any time the service is
 missing or has stale env vars. The tell-tale symptom is the service returning
 **HTTP 500 on every route** — that means `lib/env.ts` failed its boot-time Zod
@@ -105,7 +120,9 @@ Notes:
   handles cards via guest checkout.
 - `DATABASE_URL` defaults to Neon's **pooled `main`** endpoint (read from
   `.env.local`). For a staging service that must not touch production data, point
-  the `DATABASE_URL` secret at the **dev** branch (`DATABASE_URL_DEV`) instead.
+  the `DATABASE_URL` secret at the **dev** branch instead — e.g. set
+  `DATABASE_URL="$DATABASE_URL_DEV"` in `.env.local`; the script expands the
+  reference. (Staging has used the dev branch since 2026-11-27.)
 
 ---
 
