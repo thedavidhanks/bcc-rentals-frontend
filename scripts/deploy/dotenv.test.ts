@@ -136,6 +136,17 @@ describe("dotenv_get (scripts/deploy/lib/dotenv.sh)", () => {
     expect(get("MISSING")).toMatchObject({ out: "", status: 0 });
   });
 
+  it("ignores a commented-out definition and uses the real one", () => {
+    writeEnv(["# PAYPAL_ENV=live", "PAYPAL_ENV=sandbox", "# trailing comment line"]);
+    expect(get("PAYPAL_ENV")).toMatchObject({ out: "sandbox", status: 0 });
+  });
+
+  it("returns an empty string for an empty quoted value", () => {
+    writeEnv(['EMPTY_DQ=""', "EMPTY_SQ=''"]);
+    expect(get("EMPTY_DQ")).toMatchObject({ out: "", status: 0 });
+    expect(get("EMPTY_SQ")).toMatchObject({ out: "", status: 0 });
+  });
+
   it("fails on an undefined reference, naming variables but no values", () => {
     writeEnv(["SECRETISH=$NOT_DEFINED_ANYWHERE", "UNRELATED=s3cr3t-value"]);
     const r = get("SECRETISH");
