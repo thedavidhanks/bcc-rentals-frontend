@@ -35,7 +35,7 @@ npm run test
 
 ## Sensitive data
 
-- **Secrets (by name and location, never value):** `.env.local` (`DATABASE_URL`, `DATABASE_URL_DEV`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `RESEND_API_KEY`, `UPSTASH_REDIS_REST_TOKEN`); Secret Manager in `bcc-storefront-staging`. Local `DATABASE_URL` points at Neon **prod** `main`.
+- **Secrets (by name and location, never value):** `.env.local` (`DATABASE_URL`, `DATABASE_URL_DEV`, `DATABASE_URL_PROD`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `RESEND_API_KEY`, `UPSTASH_REDIS_REST_TOKEN`); Secret Manager in `bcc-storefront-staging`. Local `DATABASE_URL` resolves to the Neon **dev** branch (in `.env.local` it is a reference to `DATABASE_URL_DEV`); `DATABASE_URL_PROD` holds the prod `main` connection string.
 - **Customer / staff data:** `reservations` (renter name, email, phone, notes); Redis pending orders (`order:*`, same fields plus PayPal order IDs); `STAFF_NOTIFICATION_EMAIL`
 - **Synthetic example row:** `Jane Example | jane@example.com | 555-0100`
 - **Unpatched-vulnerability examples for this app:** a way to confirm a reservation without a captured PayPal payment; a webhook accepted without signature verification; a public endpoint (`/api/availability`, `/api/calendar/*`) leaking renter PII; a refund triggerable by an unauthenticated caller
@@ -57,7 +57,7 @@ npm run test
 | Staging | `gcloud run services describe bcc-rentals --project bcc-storefront-staging --region us-east1 --format 'value(status.url,status.latestReadyRevisionName)'` | none yet (deploy with `--labels commit-sha=$(git rev-parse --short HEAD)`) |
 | Production | none yet; `rentals.bachmancc.org` is not mapped (Block G) | — |
 
-- **Access:** staging is public via `--no-invoker-iam-check` (the org policy blocks an `allUsers` binding). It talks to PayPal **sandbox** but writes the **prod** Neon database, so bookings made there are real.
+- **Access:** staging is public via `--no-invoker-iam-check` (the org policy blocks an `allUsers` binding). It talks to PayPal **sandbox** and writes the Neon **dev** branch (since 2026-11-27, `DATABASE_URL` secret version 3 in Secret Manager), so bookings made there are test data and don't appear in prod.
 
 ## Labels
 
