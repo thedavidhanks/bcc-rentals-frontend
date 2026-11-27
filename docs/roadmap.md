@@ -23,7 +23,7 @@ reordered, or rescoped) or when a block ships, not as issues close.
 Edits ride on the branch whose change they describe, so this page can
 lag GitHub by one pull request.
 
-## Where the system is today (2026-11-12)
+## Where the system is today (2026-11-27)
 
 A renter can browse the rentals by category, open a product page, pick
 a date or time the item is free, and pay with PayPal, Venmo or a guest
@@ -35,9 +35,10 @@ calendar feed for each item.
 
 The site runs on Google Cloud Run at a staging `run.app` address,
 using PayPal's sandbox. The `rentals.bachmancc.org` address is not
-connected yet. The site already reads and writes the live database, so
-bookings made there are real. There is no staff screen in this
-repository; staff tools are the separate admin app.
+connected yet. Staging uses a test copy of the database, so bookings
+made there are test data and never reach the live system. There is no
+staff screen in this repository; staff tools are the separate admin
+app.
 
 ## Phases
 
